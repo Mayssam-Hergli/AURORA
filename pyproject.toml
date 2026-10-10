@@ -1,0 +1,37 @@
+[project]
+name = "aurora-ml"
+version = "1.0.0"
+description = "AURORA / CASSANDRA: learned forecaster, synthetic episode generator and evaluation harness"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "pyarrow>=14",
+  "pyyaml>=6.0",
+  "pydantic>=2.5",
+  "scikit-learn>=1.4",
+  "scipy>=1.11",
+  "torch>=2.2",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "black>=24"]
+
+[tool.black]
+line-length = 110
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["prototype"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E731", "B905"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

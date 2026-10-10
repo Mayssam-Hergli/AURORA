@@ -1,0 +1,130 @@
+# Synthetic episode generator (ML stopgap until twin/ v1 exists). Physics runs at 1 s steps.
+# Every value here is a modelling choice, not a measurement; see docs/ML_GUIDE.md.
+generator: synthetic-v1
+dt_s: 1.0
+episode_s: 600
+epoch_unix: 1760000000.0          # t of the first tick of episode 0 (Unix seconds, UTC)
+satellites: [A, B, C, D, E, F, G, H, I, J, K, L]
+physical: [A, B, C]               # mirrored by ESP32 nodes on hardware; here simulated too
+
+orbit:
+  altitude_km: 550
+  inclination_deg: 53
+  planes: 3
+  per_plane: 4
+  phasing_deg: 30
+  orbit_speedup: 8                # geometry is time-compressed; subsystem physics is not
+  r_comm_km: 5000
+  los_margin_km: 100
+sun_direction: [1.0, 0.0, 0.25]
+ground_station: {lat_deg: 36.8, lon_deg: 10.2, min_elevation_deg: 10}
+
+critical:                         # F = (|att_err| > theta_max) or (SOC < SOC_min) or (T_bus > T_max)
+  t_max_c: 45.0                   # hardware limit (CONTEXT 5.1), used for the twin too
+  soc_min_pct: 30.0
+  theta_max_deg: 10.0
+
+thermal:                          # C dT/dt = P_heater + a P_sun (1 - e) + P_int - k (T - T_env)
+  heat_capacity_j_per_k: 300.0
+  conductance_w_per_k: 2.0
+  t_env_c: -10.0
+  p_internal_w: 30.0
+  p_sun_absorbed_w: 40.0
+  heater_nominal_w: 15.0
+  thermostat_on_c: 5.0
+  thermostat_off_c: 9.0
+  science_heat_w: 10.0
+  attack_heater_w: [50.0, 90.0]   # scaled by intensity
+  hard_cutoff_c: 55.0             # firmware hard cut-off (CONTEXT 5.1): applies on hardware only
+
+eps:                              # dSOC/dt = (P_solar cos(pointing) (1 - e) - P_load) / E_cap
+  capacity_wh: 20.0
+  panel_w: 80.0
+  base_load_w: 25.0
+  science_w: 20.0
+  comms_tx_w: 5.0
+  wheel_w_per_krpm: 1.0
+  soc0_pct: [60.0, 90.0]
+  attack_extra_load_w: [150.0, 220.0]  # A3, scaled by intensity
+  ageing_capacity_factor: [0.5, 0.7]   # F3
+
+adcs:
+  wheel_max_rpm: 6000.0
+  wheel_nominal_rpm: [1000.0, 2000.0]
+  wheel_relax_s: 30.0
+  control_tau_s: 5.0
+  jitter_deg: 0.05
+  slew_amp_deg: [2.0, 6.0]        # benign pointing changes during ground passes
+  attack_wheel_accel_rpm_s: [30.0, 60.0]   # A2 torque bias, scaled by intensity
+  saturated_drift_deg_s: [0.3, 0.6]
+
+commands:
+  ping_period_s: 20               # legit health checks during passes
+  science_window_s: [60, 150]
+  benign_unknown_rate: 0.0005     # rare benign unknown-origin PING per sat per s (hard negative)
+  benign_isl_relay_rate: 0.002    # legit relayed PING per feasible link per s
+  heater_test_prob: 0.25          # legit scheduled heater test per pass
+  precursor:                      # attack reconnaissance before the malicious command
+    burst: {pings: [2, 6], rejected: [3, 8]}
+    sparse: {pings: [0, 1], rejected: [1, 2]}
+    none: {pings: [0, 0], rejected: [0, 0]}
+  precursor_lead_s: [20, 60]
+  isl_relay_delay_s: [5, 20]
+
+noise_sigma:                      # reported-telemetry noise (synthetic families scale/shape it)
+  temp_c: 0.15
+  soc_pct: 0.2
+  bus_v: 0.05
+  load_w: 0.8
+  solar_w: 1.0
+  current_ma: 20.0
+  att_err_deg: 0.05
+  wheel_rpm: 5.0
+  rate_dps: 0.01
+  rssi_dbm: 1.5
+  level: 0.02
+
+faults:
+  drift_rate: {temp_c: [0.01, 0.03], soc_pct: [0.01, 0.03], att_err_deg: [0.003, 0.01]}   # F1, per s
+  seu_magnitude: {temp_c: 64.0, soc_pct: 50.0, att_err_deg: 45.0}                        # F2 single tick
+
+timing:
+  onset_s: [120, 300]
+  b2_bias_rate_c_s: [0.05, 0.15]  # B2 slow bias that hides the real rise
+
+mix:                              # episode types (CONTEXT 5.7)
+  N: 0.18
+  F1: 0.06
+  F2: 0.06
+  F3: 0.06
+  F4: 0.06
+  F5: 0.06
+  A1: 0.12
+  A2: 0.10
+  A3: 0.06
+  B1: 0.06
+  B2: 0.06
+  C1: 0.12
+mix_test_real:                    # real-noise split emphasises false positives
+  N: 0.35
+  F1: 0.07
+  F2: 0.07
+  F3: 0.07
+  F4: 0.07
+  F5: 0.07
+  A1: 0.15
+  B1: 0.15
+
+families:                         # held-out generator families (CONTEXT 5.5 "Splits")
+  train:
+    drift: [ramp, saturating]
+    noise: [gauss, ar1]
+    precursor: [burst, sparse, none]
+    intensity: [0.7, 1.0]
+  ood:                            # every test_ood episode has at least one held-out knob
+    drift: [pulsed]
+    noise: [student_t]
+    intensity: [0.5, 0.7]
+
+splits: {train: 800, val: 200, test_id: 300, test_ood: 300, test_real: 200}
+split_seeds: {train: 101, val: 102, test_id: 103, test_ood: 104, test_real: 105}
