@@ -1,0 +1,18 @@
+# Learned forecaster (CONTEXT 5.5). Sized for a laptop CPU; see docs/ML_GUIDE.md for the trade-offs.
+window_s: 30                 # input window (CONTEXT 5.5)
+horizons_s: [10, 30, 60, 120]
+hidden: 32
+rounds: 3                    # message-passing rounds (reach: COMMS_i -> COMMS_j -> OBC_j -> THERMAL_j)
+edge_hidden: 16
+batch: 48
+epochs: 8
+windows_per_episode: 8       # half uniform, half around onset -> failure
+val_windows_per_episode: 6
+lr: 0.002
+patience: 3
+loss_weights: {hazard: 1.0, next: 0.3, malicious: 0.3}
+pos_weight: 3.0
+threads: 3
+ensemble_seeds: [0, 1, 2, 3, 4]
+ablations: [no_eng, unconstrained, no_residual]
+uncertainty_statistic: std   # Q = ensemble std of P(F); variance (CONTEXT text) is bounded by 0.25 < theta_uncert

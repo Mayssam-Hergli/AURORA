@@ -96,11 +96,11 @@ Each folder has its own `README.md` with purpose, owner, and the interfaces it u
 | Digital twin v0 (1 satellite, thermal + EPS) | TBD | planned (Task 4) |
 | Episode generator | TBD | planned (Task 5) |
 | CASSANDRA core skeleton | Mayssam Hergli | planned (Task 6) |
-| Evaluation harness v0 + SCAD loader | TBD | planned (Task 7) |
+| Evaluation harness + dataset loaders (SCAD, CuCD-ID, OPS-SAT-AD; ESA-ADB loader not yet run) | Youssef Mhamdi (ML side; to share with the twin/evaluation owner) | done for the forecaster, simulation only (`eval/`) |
 | Firmware v1 (ESP32, PlatformIO) | TBD | planned (Task 8) |
 | Digital twin v1 (12 satellites, orbits, ADCS, ISL) | TBD | planned |
 | Sandbox + J(a) + safety gates | Mayssam Hergli | planned |
-| Learned forecaster (GNN + GRU), calibration, baselines | TBD | planned |
+| Learned forecaster (GNN + GRU), calibration, baselines | Youssef Mhamdi | done v1, evaluated on synthetic stand-in episodes (`ml/`); twin v1 episodes and Pi latency pending |
 | Scenarios B and C end-to-end | Mayssam Hergli | planned |
 | Open MCT dashboard | TBD | planned |
 | Raspberry Pi deployment + latency | TBD | planned |

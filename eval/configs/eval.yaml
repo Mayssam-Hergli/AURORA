@@ -1,0 +1,19 @@
+# Evaluation protocol (CONTEXT 5.8)
+target_fpr: 0.001            # tau: false-positive rate of 0.1 % of benign timesteps
+tau_source: val              # tau chosen on validation clean + fault episodes, applied unchanged to tests
+primary_horizon_s: 60        # headline numbers use P(F < t + 60 s); all horizons are reported
+stride_s: 2                  # forecaster evaluated every 2 s (forward-filled), lead-time error <= 1 s
+ece_bins: 10
+bootstrap: 2000
+test_splits: [test_id, test_ood, test_real]
+baselines: [threshold, trajectory, lstm_ae, gdn]
+response:                    # closed loop (CONTEXT 2, 5.4)
+  act_threshold: 0.85
+  flag_threshold: 0.30
+  horizon_s: 60
+  rollout_s: 30
+  theta_uncert: 0.35
+  isolation_budget: 0.25
+  heal_steps: 10
+  weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3, w_q: 0.5}
+  cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, isolate_subsystem: 0.25, quarantine_reroute: 0.4}
