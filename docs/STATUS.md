@@ -6,7 +6,7 @@ Ownership (since 11 Oct): **Mayssam** owns the contract, bus, core, attacks, boa
 | Component | Path | Owner | State | Evidence |
 |---|---|---|---|---|
 | Repo health (Python 3.11 venv, pinned deps, LF endings) | `Makefile`, `mk/`, `requirements.lock`, `.gitattributes` | Mayssam | done (G0) | `make setup && make test` |
-| Interface contract | `docs/interfaces.md`, `aurora_common/` | Mayssam | done (G1), frozen v1.1 (SPARTA mapping per P4) | `pytest tests/test_schemas.py tests/test_topics.py` |
+| Interface contract | `docs/interfaces.md`, `aurora_common/` | Mayssam | done (G1), frozen v1.2 (SPARTA mapping per P4; SAFE semantics) | `pytest tests/test_schemas.py tests/test_topics.py` |
 | MQTT broker | `ground/`, `mk/core.mk` | Mayssam | done (G1): Mosquitto 1883 + 9001, reachable from Windows | `make up && make bus-check` |
 | CASSANDRA core | `cassandra/` | Mayssam | missing (reference loop in `eval/closed_loop.py`) | — |
 | Replay publisher (plant until the live twin exists) | `scripts/replay_twin.py` | Mayssam | missing | — |
@@ -36,6 +36,11 @@ G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requ
 - Board temperature is emulated by firmware (no sensor); the ISL cut on the board is logical, not a radio cut.
 - Training and evaluation data are synthetic (`ml/synthetic/`), not twin v1 or hardware.
 
+## Notes for Youssef
+- **M1 fix in `ml/synthetic/engine.py` must follow the SAFE rule of `docs/interfaces.md` Section 3.2 (v1.2):** in SAFE the satellite refuses `HEATER on` from any origin (load shedding) and `SET_MODE` other than `NOMINAL`/`SAFE`; only `SET_MODE NOMINAL` exits SAFE; safe mode never inspects `_malicious`. `scripts/replay_twin.py` and the board bridge apply the same rule, so all plants behave alike.
+- The core's sandbox needs `SyntheticTwin.snapshot(include_queue=False)` and `SyntheticTwin.seed_from_observation(obs: dict)`; until they exist they are stubbed behind an adapter in `cassandra/sandbox.py`.
+- S10: offline synthetic episodes should say `src: "synthetic"` (the contract already allows it).
+
 ## For the paper and slides (Youssef: paper; Mayssam: slides)
 - SPARTA ids changed from the submitted paper (P4 adopted 2026-10-11): masking is now DE-0002 / DE-0003 (EX-0001 for the replay variant), propagation IA-0003; Scenario A stays IA-0009. Wherever the new ids appear, add the footnote **"Technique mapping refined in Phase 3."** Table: `docs/interfaces.md` Section 7.
 
@@ -44,6 +49,7 @@ G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requ
 - 2026-10-10: core ticks on message timestamps with a wall-clock watchdog; warn when the hw-vs-twin clock offset exceeds 0.5 s.
 - 2026-10-10: Mosquitto on 1883/9001; port 6379 stays with the Phase 2 Redis fallback (`sat_b_redis`).
 - 2026-10-11: SPARTA proposal P4 adopted (interfaces.md v1.1, Section 7).
+- 2026-10-11: SAFE semantics (interfaces.md v1.2): HEATER on refused in SAFE from any origin; only SET_MODE NOMINAL exits SAFE. A1 attack = one latched HEATER on (`--reassert` optional).
 - 2026-10-11: scope split (see top). Makefile split into `mk/*.mk`; until `twin/service.py` exists, the core's plant is `scripts/replay_twin.py`.
 
 ## Changelog

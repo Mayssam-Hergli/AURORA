@@ -1,6 +1,6 @@
 # AURORA interfaces (the contract)
 
-**Version v1.1. Frozen 2026-10-11** (v1.1 changes only the SPARTA table, Section 7). Source: `docs/CONTEXT.md` Section 6, plus decisions D2–D6, D8 and D9 of `docs/MASTER_PLAN.md`.
+**Version v1.2. Frozen 2026-10-11** (v1.1: SPARTA table, Section 7; v1.2: SAFE semantics, Section 3.2; no message format changed since v1). Source: `docs/CONTEXT.md` Section 6, plus decisions D2–D6, D8 and D9 of `docs/MASTER_PLAN.md`.
 Code that publishes or consumes these messages must match this file. To change an interface, change this file **in the same commit** and say so in the commit message.
 The Python implementation is `aurora_common/` (`schemas.py`, `topics.py`, `bus.py`); `tests/test_schemas.py` validates every example below.
 
@@ -95,6 +95,14 @@ Receivers also accept `isl_peers` as a comma-separated string (`"A,C"`), which t
 | `PING` | `{}` |
 
 The envelope (`id`, `sat`, `origin`, `cmd`) is validated strictly. **`args` that do not match the table are still delivered**: attackers send malformed commands, and the satellite rejects them (its `cmd_rej` counter rises). Publishers we write (core, attack scripts) must send valid `args`; `aurora_common.schemas.args_problems()` checks them.
+
+**Satellite behaviour in SAFE (semantics, v1.2).** Every plant follows the same rule: the twin, `scripts/replay_twin.py`, the ESP8266 bridge, and `ml/synthetic/engine.py`.
+- `SAFE_MODE` (or `SET_MODE {"mode":"SAFE"}`) puts the satellite in SAFE: heater off, non-essential loads off.
+- While in SAFE, the satellite **refuses `HEATER {"on": true}` from any origin**, including `ground` and `core` (load shedding). It never asks whether a command is malicious; it cannot know.
+- While in SAFE, it refuses commands whose origin is not `ground` or `core` (CONTEXT §5.1), and refuses `SET_MODE` to any mode other than `NOMINAL` or `SAFE`.
+- **Only `SET_MODE {"mode":"NOMINAL"}` exits SAFE.**
+- Still accepted in SAFE from `ground` or `core`: `HEATER {"on": false}`, `SAFE_MODE`, `ISL_ENABLE`, `PING`.
+- A refused command increments `obc.cmd_rej`; an accepted one increments `obc.cmd_ok`.
 
 ### 3.3 Node state: `sat/{id}/state` (retained)
 
@@ -249,6 +257,8 @@ Used in `core/event.sparta` and `core/action.reason`. Proposal P4 (`docs/INTERFA
 | reroute over feasible links | CM0070 Alternate Communications Paths |
 
 ## Changelog
+
+- **v1.2, 2026-10-11:** SAFE semantics (Section 3.2): in SAFE, `HEATER on` is refused from any origin, `SET_MODE` other than `NOMINAL`/`SAFE` is refused, and only `SET_MODE NOMINAL` exits SAFE. Semantics only; no message format changed.
 
 - **v1.1, 2026-10-11:** SPARTA mapping (Section 7) adopts proposal P4: masking DE-0002 / DE-0003 (EX-0001 for replay), propagation IA-0003, reroute CM0070, isolation CM0032 / CM0042. No message format changed.
 
