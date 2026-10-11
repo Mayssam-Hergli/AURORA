@@ -1,7 +1,16 @@
-# AURORA status. Updated 2026-10-11 by Mayssam Hergli (with Claude Code)
+# AURORA status. Updated 2026-10-12 (overnight run by Claude Code for Mayssam Hergli)
+
+> **2026-10-11 check (models):** no trained models or results on this machine (no `data/models/`, no `results/`, none in Downloads/Desktop/Documents); Youssef has pushed no branches; `main` unchanged at 2cd9cfa. The core runs the trajectory forecaster for all satellites until models + `calibration.json` exist. Phase 2 taken over by Mayssam on 11 Oct.
+
+## Decisions taken overnight
+- Step 3 (G4) had not been committed by the morning block; committed locally as `503d9e7` before starting (tests had passed, tree unchanged).
+- G4 reads "flagged, **contained (action chosen by J)**, healed" (Mayssam, 11 Oct): J keeps choosing `isolate_subsystem` for a single latched A1; quarantine is not forced.
+
+## Open questions
+- (none yet)
 
 Plan: [docs/MASTER_PLAN.md](MASTER_PLAN.md). Context: [docs/CONTEXT.md](CONTEXT.md).
-Ownership (since 11 Oct): **Mayssam** owns the contract, bus, core, attacks, board and demo; **Youssef** owns `ml/`, `eval/`, `twin/`, `dashboard/` and `docs/paper/`. Neither edits the other's folders.
+Ownership: since the night of 11 Oct, **Mayssam owns every lane** again (Youssef has been told); the 11 Oct split below is kept for history.
 
 | Component | Path | Owner | State | Evidence |
 |---|---|---|---|---|
@@ -45,7 +54,8 @@ G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requ
 - The core's sandbox needs `SyntheticTwin.snapshot(include_queue=False)` and `SyntheticTwin.seed_from_observation(obs: dict)`; until they exist they are stubbed behind an adapter in `cassandra/sandbox.py`.
 - S10: offline synthetic episodes should say `src: "synthetic"` (the contract already allows it).
 
-## For the paper and slides (Youssef: paper; Mayssam: slides)
+## For the paper, slides, demo script and voiceover
+- **A1 wording: say "contains", not "quarantines".** For a single latched heater command, J chooses `isolate_subsystem` (cut the heater, satellite stays in service). The demo script and voiceover must say "CASSANDRA contains B/E" and name the action J chose on screen; quarantine appears only when J escalates (repeated commands) or for C1.
 - SPARTA ids changed from the submitted paper (P4 adopted 2026-10-11): masking is now DE-0002 / DE-0003 (EX-0001 for the replay variant), propagation IA-0003; Scenario A stays IA-0009. Wherever the new ids appear, add the footnote **"Technique mapping refined in Phase 3."** Table: `docs/interfaces.md` Section 7.
 
 ## Decisions log

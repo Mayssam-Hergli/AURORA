@@ -2,6 +2,8 @@
 
 **For:** Claude Code, working in the `AURORA` repo with Mayssam Hergli.
 **Written:** Saturday, 10 October 2026. Build deadline: **Wednesday, 14 October 2026**, then the live final at the Congress, with a recorded backup.
+**Ownership update, night of 11 Oct:** Mayssam takes over every lane again, including Youssef's folders below (he has been told). The table is kept for history.
+
 **Ownership (updated 11 Oct, supersedes the 10 Oct "Mayssam owns every lane"):**
 
 | Owner | Folders | Phases |
@@ -110,7 +112,7 @@ Neither side edits the other's folders. What the core needs from `ml/` goes thro
 | **G1** Contract + bus | `docs/interfaces.md` frozen; `aurora_common` tests pass; `make up` starts Mosquitto (1883 + WebSocket 9001); `mqtt_tail.py` shows a test message | Mayssam | Sat 10 |
 | **G2** ML fixed | M1–M5 and S1–S7, S9, S10 fixed with tests; pipeline re-run; `results/manifest.json` committed; trained models on disk | Youssef | Sun 11 |
 | **G3** Live twin | 12 twin satellites on the bus at 1 Hz; a HEATER command visibly heats; a recorded run opens with `ml.schema.read_episode` | Youssef | Sun 11 |
-| **G4** Lane 1 done | `make demo-sw` + `attacks A1`: the target is flagged, quarantined and healed **with no manual step**, and the gt-isolation test passes. Until G3, the plant is `scripts/replay_twin.py` | Mayssam | Mon 12 |
+| **G4** Lane 1 done | `make demo-sw` + `attacks A1`: the target is flagged, **contained (action chosen by J)** and healed **with no manual step**, and the gt-isolation test passes. Until G3, the plant is `scripts/replay_twin.py` | Mayssam | Mon 12 |
 | **G5** All scenarios + dashboard | A1, B1 and C1 each handled in software (Mayssam); Open MCT shows telemetry, P(F), states, events and links, and survives a broker restart (Youssef) | both | Tue 13 |
 | **G6** Board joins | The ESP8266 board is satellite B on the bus; A1 against B heats the board, the core quarantines and heals it, and the LEDs follow | Mayssam | Tue 13 |
 | **G7** Ship | Numbers regenerated and paper compiles with macros (Youssef); demo script, preflight, backup video recorded (Mayssam); `v1.0-final` tag (with OK) | both | Wed 14 |
