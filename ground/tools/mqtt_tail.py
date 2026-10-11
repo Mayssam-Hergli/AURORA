@@ -13,6 +13,7 @@ import argparse
 import json
 import sys
 import time
+import uuid
 from collections import Counter
 from pathlib import Path
 
@@ -63,7 +64,7 @@ def main(argv=None):
             text = text[: a.width - 3] + "..."
         print(f"{topic} | {src} | {t} | {text}{bad}", flush=True)
 
-    bus = Bus(f"mqtt-tail-{int(time.time())}", a.host, a.port)
+    bus = Bus(f"mqtt-tail-{uuid.uuid4().hex[:8]}", a.host, a.port)
     bus.subscribe(a.filter, on_raw, parse=False)
     if not bus.start():
         print(f"waiting for broker at {a.host}:{a.port} ...", file=sys.stderr)

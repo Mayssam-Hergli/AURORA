@@ -1,6 +1,6 @@
 # AURORA interfaces (the contract)
 
-**Version v1. Frozen 2026-10-11.** Source: `docs/CONTEXT.md` Section 6, plus decisions D2–D6, D8 and D9 of `docs/MASTER_PLAN.md`.
+**Version v1.1. Frozen 2026-10-11** (v1.1 changes only the SPARTA table, Section 7). Source: `docs/CONTEXT.md` Section 6, plus decisions D2–D6, D8 and D9 of `docs/MASTER_PLAN.md`.
 Code that publishes or consumes these messages must match this file. To change an interface, change this file **in the same commit** and say so in the commit message.
 The Python implementation is `aurora_common/` (`schemas.py`, `topics.py`, `bus.py`); `tests/test_schemas.py` validates every example below.
 
@@ -230,16 +230,26 @@ Not MQTT, but fixed by the firmware already flashed, so recorded here. 115200 ba
 - Bridge → board: `H` heater on, `C` heater off, `<idx><G|R|O>` LED state with idx **1 = A, 2 = B, 3 = C**.
 - Node state → LED: `nominal` → `G`, `flagged` → `R`, `quarantined` / `safe_hold` → `O` (both off).
 
-## 7. SPARTA mapping (pending decision)
+## 7. SPARTA mapping
 
-Used in `core/event.sparta` and `core/action.reason`. Until the team decides on proposal P4 (`docs/INTERFACE_PROPOSALS.md`), the ids of the submitted paper apply:
+Used in `core/event.sparta` and `core/action.reason`. Proposal P4 (`docs/INTERFACE_PROPOSALS.md`) adopted on 2026-10-11. The submitted paper used IA-0006 for masking and IA-0009 for propagation; wherever the paper or slides show the new ids, add the footnote *"Technique mapping refined in Phase 3."*
 
-| Scenario | SPARTA |
+| Scenario | Technique |
 |---|---|
-| A: cyber-to-physical cascade | IA-0009 |
-| B: telemetry masking | IA-0006 |
-| C: cross-satellite propagation | IA-0009 |
+| A: cyber-to-physical cascade (A1–A3) | IA-0009 Trusted Relationship |
+| B: telemetry masking, freeze (B1) | DE-0002 Disrupt or Deceive Downlink |
+| B: telemetry masking, replay (B1 replay variant) | EX-0001 Replay |
+| B: slow bias (B2) | DE-0003 On-Board Values Obfuscation |
+| C: cross-satellite propagation (C1) | IA-0003 Crosslink via Compromised Neighbor |
+
+| Response | Countermeasure |
+|---|---|
+| detection (forecast, monitor) | CM0032 On-Board Intrusion Detection & Prevention |
+| safe mode, isolate subsystem, quarantine (contain → observe → heal) | CM0042 Robust Fault Management (and CM0032) |
+| reroute over feasible links | CM0070 Alternate Communications Paths |
 
 ## Changelog
+
+- **v1.1, 2026-10-11:** SPARTA mapping (Section 7) adopts proposal P4: masking DE-0002 / DE-0003 (EX-0001 for replay), propagation IA-0003, reroute CM0070, isolation CM0032 / CM0042. No message format changed.
 
 - **v1, 2026-10-11:** frozen. From CONTEXT §6 plus: `redteam/{id}` topic (D8); `src: synthetic` (D9); `SET_MODE` enum (D3); `p_std` is a standard deviation and `q`, `p_std` may be `null` (D4); `origin` enum (D6); `ml_labels.json` with `t0` (D2); `emulated`, `warming_up`, `reason`, `args` optional fields; `core/event` schema; per-satellite limits; QoS, retained and subscription rules.
