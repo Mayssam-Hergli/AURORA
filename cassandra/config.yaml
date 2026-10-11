@@ -16,11 +16,12 @@ satellites:
     theta_max_deg: 10.0
     heating_rate_c_s: 0.2         # twin heater (50-90 W into 300 J/K) near room temperature; a modelling value
     heater_min_rise_c_s: 0.02     # heater on but temp_c rising slower than this = inconsistent telemetry
+    heal_below_c: 30.0            # heal only once temp_c is back under this (Phase 2 predictor: < 30 C)
   overrides: {}
   # When the ESP8266 board plays B (Phase 8), use (firmware model: +1.5 C/s while latched):
   #   overrides:
   #     B: {kind: hw, subs: [thermal, obc], t_max_c: 60.0, soc_min_pct: null, theta_max_deg: null,
-  #         heating_rate_c_s: 1.5, heater_min_rise_c_s: 0.5}
+  #         heating_rate_c_s: 1.5, heater_min_rise_c_s: 0.5, heal_below_c: 30.0}
 
 ingest:
   hold_s: 3.0                     # a value is held this long after its last message, then stale
@@ -34,6 +35,9 @@ ingest:
 forecast:
   window_s: 8                     # trajectory forecaster: least-squares slope over the last 8 ticks (Phase 2)
   decision_horizon_s: 60          # q = p_std at this horizon (D4)
+  # Trajectory extrapolates a channel only from this level up. Benign slews during ground passes reach
+  # 2-6 deg (ml/configs/synthetic.yaml adcs.slew_amp_deg); extrapolating them flags healthy satellites.
+  min_level: {att_err_deg: 6.5}
   ensemble:
     enabled: true                 # use the learned ensemble for twin satellites when it loads
     models_dir: data/models       # full_s*.pt + understanding.npz + calibration.json (Youssef, Phase 2)
@@ -43,3 +47,29 @@ monitor:
   window_s: 10                    # ticks of fresh thermal telemetry a rule looks at
   freeze_eps_c: 1.0e-6            # temp_c identical to this precision for the whole window = frozen
   recover_s: 10                   # consistent ticks before an untrusted channel is trusted again
+
+sandbox:
+  rollout_s: 30                   # shadow rollout per candidate (eval.yaml response.rollout_s)
+  shadow_seed: 0
+  candidates: [none, safe_mode, block_source, isolate_subsystem, quarantine]
+  weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3, w_q: 0.5}     # J(a) weights (eval.yaml response.weights)
+  cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, isolate_subsystem: 0.25, quarantine: 0.4}
+  board_model: {ambient_c: 25.0, heat_c_s: 1.5, cool_per_s: 0.263, ceiling_c: 95.0}  # ESP8266 firmware
+
+act:
+  # Decisions use P(F < t + horizon_s). Phase 2 used the 30 s horizon with 0.30 / 0.85, which suits a
+  # linear +1.5 C/s ramp; the twin's first-order thermal response (time constant ~150 s) slows as it
+  # heats, and on 30 s a linear forecast crosses 0.85 only ~4 s before T_max. 60 s gives ~30-50 s lead.
+  horizon_s: 60
+  warn_p: 0.30                    # nominal -> flagged
+  plan_p: 0.50                    # flagged -> the sandbox scores the responses (J decides, "none" included)
+  calm_p: 0.10                    # below this: de-flag after unflag_ticks, heal after calm_ticks
+  calm_ticks: 3                   # Phase 2: healed after 3 s below 30 C
+  unflag_ticks: 15                # hysteresis before a flagged satellite (no action taken) returns to nominal
+  min_dwell_s: 2.0                # minimum time in a state (no flapping)
+  replan_s: 5.0                   # a flagged satellite is re-planned at most this often
+  theta_uncert: 0.35              # uncertainty gate on q (D4: inactive when q is null)
+  isolation_budget: 0.25          # at most 25 % of satellites quarantined per orbital period
+  orbit_period_s: 5736.0          # 95.6 min at 550 km
+  orbit_speedup: 8                # orbit time compression of the plant; budget window = period / speedup
+  suspicious_window_s: 300        # telecommands this recent are candidate causes (a latched heater acts for minutes)

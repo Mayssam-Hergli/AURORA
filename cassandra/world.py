@@ -19,6 +19,7 @@ class SatProfile:
     theta_max_deg: float | None
     heating_rate_c_s: float = 0.2  # known heater effect, used to estimate T when temp_c is untrusted
     heater_min_rise_c_s: float = 0.02  # with the heater on, temp_c must rise at least this fast
+    heal_below_c: float = 30.0  # heal only once temp_c is back under this
 
 
 @dataclass(frozen=True)

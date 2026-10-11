@@ -82,9 +82,10 @@ class Trajectory:
 
     name = "trajectory-v0"
 
-    def __init__(self, prof: SatProfile, window: int):
+    def __init__(self, prof: SatProfile, window: int, min_level: dict[str, float] | None = None):
         self.prof = prof
         self.window = window
+        self.min_level = min_level or {}  # channel -> level below which it is not extrapolated
         self.hist: deque = deque(maxlen=window)  # (t, temp_c, soc_pct, att_err_deg)
         self.est_temp: float | None = None  # running estimate while temp_c is untrusted
         self.last_trusted_temp: float | None = None
@@ -147,6 +148,8 @@ class Trajectory:
             gap = (limit - value) * sign
             if gap <= 0:
                 eta = 0.0
+            elif sign > 0 and value < self.min_level.get(name, -math.inf):
+                eta = math.inf  # inside the benign envelope: do not extrapolate (config min_level)
             elif rate > 1e-6:
                 eta = gap / rate
             else:
@@ -242,7 +245,7 @@ class ForecastStage:
         fc = cfg["forecast"]
         self.profiles = profiles
         self.decision_horizon = int(fc["decision_horizon_s"])
-        self.traj = {s: Trajectory(p, int(fc["window_s"])) for s, p in profiles.items()}
+        self.traj = {s: Trajectory(p, int(fc["window_s"]), fc.get("min_level")) for s, p in profiles.items()}
         self.ensemble = ensemble
         self.startup_notes: list[Note] = []
 

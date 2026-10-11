@@ -8,9 +8,9 @@ Ownership (since 11 Oct): **Mayssam** owns the contract, bus, core, attacks, boa
 | Repo health (Python 3.11 venv, pinned deps, LF endings) | `Makefile`, `mk/`, `requirements.lock`, `.gitattributes` | Mayssam | done (G0) | `make setup && make test` |
 | Interface contract | `docs/interfaces.md`, `aurora_common/` | Mayssam | done (G1), frozen v1.2 (SPARTA mapping per P4; SAFE semantics) | `pytest tests/test_schemas.py tests/test_topics.py` |
 | MQTT broker | `ground/`, `mk/core.mk` | Mayssam | done (G1): Mosquitto 1883 + 9001, reachable from Windows | `make up && make bus-check` |
-| CASSANDRA core | `cassandra/` | Mayssam | in progress (Phase 4): ingest, forecast (trajectory + ensemble adapter), monitor done; sandbox, act, explain, main loop next | `pytest tests/cassandra` |
+| CASSANDRA core | `cassandra/` | Mayssam | done for G4 (software, A1): ingest, forecast, monitor, sandbox (stand-in engine hooks), act, explain, main loop; trajectory forecaster everywhere until trained models exist | `pytest tests/cassandra tests/integration`; `make demo-sw` + `make attack A1 TARGET=E` |
 | Replay publisher (plant until the live twin exists) | `scripts/replay_twin.py` | Mayssam | done: clean scenario, bus commands applied, SAFE semantics | `pytest tests/test_replay_twin.py` |
-| Live attack scripts | `attacks/` | Mayssam | missing | — |
+| Live attack scripts | `attacks/` | Mayssam | partial: A1 (one latched HEATER on, `--reassert` optional, ground truth on gt/ only) and `--stop`; B1, C1, faults, N in Phase 5 | `make attack A1 TARGET=E` |
 | ESP8266 board as satellite B | `hardware/`, `prototype/phase2-demo/` | Mayssam | Phase 2 code in `phase2_kit.zip`, not yet imported | — |
 | Demo script, preflight, backup recording | `docs/DEMO_SCRIPT.md`, `scripts/preflight.sh` | Mayssam | missing | — |
 | Learned forecaster, baselines, calibration | `ml/` | Youssef | partial: works, known bugs M1–M5, S1–S10 (Phase 2) | PR #1 review; `make test` |
@@ -23,13 +23,15 @@ Ownership (since 11 Oct): **Mayssam** owns the contract, bus, core, attacks, boa
 | Trained models, results | `data/models/`, `results/` | Youssef | missing locally (only on Youssef's machine); retrain in Phase 2 | — |
 
 ## Gates
-G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requirements.lock`; `make lint` clean) · G1 ✅ 2026-10-11 (`make test`: 60 passed incl. broker round trip; `make bus-check`: PASS; `make lint` clean) · G2 ⏳ (Youssef) · G3 ⏳ (Youssef) · G4 ⏳ (Mayssam) · G5 ⏳ (both) · G6 ⏳ (Mayssam) · G7 ⏳ (both)
+G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requirements.lock`; `make lint` clean) · G1 ✅ 2026-10-11 (`make test`: 60 passed incl. broker round trip; `make bus-check`: PASS; `make lint` clean) · G2 ⏳ (Youssef) · G3 ⏳ (Youssef) · G4 🔎 ready for review 2026-10-11 (`tests/integration/test_a1_software.py` green through Mosquitto; live `make demo-sw` + `make attack A1 TARGET=E`: flagged, contained, healed; 117 passed; lint clean) · G5 ⏳ (both) · G6 ⏳ (Mayssam) · G7 ⏳ (both)
 
 ## Numbers (each with source file + command)
 | Metric | Value | Source |
 |---|---|---|
 | Ported trajectory forecaster on the Phase 2 heater latch (board profile, T_max 60 C, +1.5 C/s, 1 Hz ticks) | P(F<30 s) >= 0.85 at t = 19 s, 53.5 C (paper Table II: 18.8 s, 53.3 C); flag (P >= 0.30) at t = 7 s, 35.5 C (paper: 2.3 s, 28.5 C; slower because the slope window is 8 ticks at 1 Hz instead of 8 samples at 2 Hz) | `tests/cassandra/test_forecast.py::test_phase2_heater_latch_on_the_board_profile` (simulated input) |
 | Monitor false alarms, clean replay, 12 twin satellites x 600 s | 0 | `tests/cassandra/test_monitor.py::test_clean_replay_run_raises_no_alarm` (simulated) |
+| A1 closed loop, replay plant, core in the loop, no broker (seed 3): heater latched on E at t = 60 s | flagged t = 166 s; isolate_subsystem at t = 187 s, 42.0 C (forecast ETA to T_max 45 C: 28 s); max true temp 41.7 C; healed t = 368 s at 29.9 C; no other satellite changed state; planning 23 ms | `tests/cassandra/test_act.py` (simulated; sandbox = simulator, so an upper bound) |
+| A1 live through Mosquitto, `make demo-sw SPEED=20 SEED=3` + `make attack A1 TARGET=E` (2026-10-11) | flagged at P(F<60s)=0.31; isolate_subsystem at 41.2 C (ETA to 45 C: 29 s), cause "heater latched ON (origin=ground, 116 s ago)", SPARTA IA-0009; healed at 29.4 C; tick latency median 1.8 ms, p95 3.1 ms; planning 41 ms (laptop, WSL) | core console output; `tests/integration/test_a1_software.py` (simulated plant) |
 | — | none yet: every number in the technical report comes from PR #1's results, which are not in this repo; re-run in Phase 2 | — |
 
 ## Known limitations (said out loud in the demo and paper)
