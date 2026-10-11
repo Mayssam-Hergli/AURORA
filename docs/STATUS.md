@@ -8,8 +8,8 @@ Ownership (since 11 Oct): **Mayssam** owns the contract, bus, core, attacks, boa
 | Repo health (Python 3.11 venv, pinned deps, LF endings) | `Makefile`, `mk/`, `requirements.lock`, `.gitattributes` | Mayssam | done (G0) | `make setup && make test` |
 | Interface contract | `docs/interfaces.md`, `aurora_common/` | Mayssam | done (G1), frozen v1.2 (SPARTA mapping per P4; SAFE semantics) | `pytest tests/test_schemas.py tests/test_topics.py` |
 | MQTT broker | `ground/`, `mk/core.mk` | Mayssam | done (G1): Mosquitto 1883 + 9001, reachable from Windows | `make up && make bus-check` |
-| CASSANDRA core | `cassandra/` | Mayssam | missing (reference loop in `eval/closed_loop.py`) | — |
-| Replay publisher (plant until the live twin exists) | `scripts/replay_twin.py` | Mayssam | missing | — |
+| CASSANDRA core | `cassandra/` | Mayssam | in progress (Phase 4): ingest, forecast (trajectory + ensemble adapter), monitor done; sandbox, act, explain, main loop next | `pytest tests/cassandra` |
+| Replay publisher (plant until the live twin exists) | `scripts/replay_twin.py` | Mayssam | done: clean scenario, bus commands applied, SAFE semantics | `pytest tests/test_replay_twin.py` |
 | Live attack scripts | `attacks/` | Mayssam | missing | — |
 | ESP8266 board as satellite B | `hardware/`, `prototype/phase2-demo/` | Mayssam | Phase 2 code in `phase2_kit.zip`, not yet imported | — |
 | Demo script, preflight, backup recording | `docs/DEMO_SCRIPT.md`, `scripts/preflight.sh` | Mayssam | missing | — |
@@ -28,6 +28,8 @@ G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requ
 ## Numbers (each with source file + command)
 | Metric | Value | Source |
 |---|---|---|
+| Ported trajectory forecaster on the Phase 2 heater latch (board profile, T_max 60 C, +1.5 C/s, 1 Hz ticks) | P(F<30 s) >= 0.85 at t = 19 s, 53.5 C (paper Table II: 18.8 s, 53.3 C); flag (P >= 0.30) at t = 7 s, 35.5 C (paper: 2.3 s, 28.5 C; slower because the slope window is 8 ticks at 1 Hz instead of 8 samples at 2 Hz) | `tests/cassandra/test_forecast.py::test_phase2_heater_latch_on_the_board_profile` (simulated input) |
+| Monitor false alarms, clean replay, 12 twin satellites x 600 s | 0 | `tests/cassandra/test_monitor.py::test_clean_replay_run_raises_no_alarm` (simulated) |
 | — | none yet: every number in the technical report comes from PR #1's results, which are not in this repo; re-run in Phase 2 | — |
 
 ## Known limitations (said out loud in the demo and paper)

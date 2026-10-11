@@ -63,6 +63,8 @@ def parse_sats(spec: str) -> list[str]:
 
 
 def build_twin(seed: int, duration_s: int) -> SyntheticTwin:
+    if duration_s < 120:
+        raise ValueError("duration must be at least 120 s (the engine schedules science windows)")
     cfg = copy.deepcopy(ml_config.load("synthetic"))
     cfg["episode_s"] = duration_s
     spec = sample_spec(cfg, "train", seed, np.random.default_rng(seed))

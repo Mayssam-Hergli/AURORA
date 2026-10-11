@@ -14,10 +14,13 @@ satellites:
     t_max_c: 45.0
     soc_min_pct: 30.0
     theta_max_deg: 10.0
+    heating_rate_c_s: 0.2         # twin heater (50-90 W into 300 J/K) near room temperature; a modelling value
+    heater_min_rise_c_s: 0.02     # heater on but temp_c rising slower than this = inconsistent telemetry
   overrides: {}
-  # When the ESP8266 board plays B (Phase 8), use:
+  # When the ESP8266 board plays B (Phase 8), use (firmware model: +1.5 C/s while latched):
   #   overrides:
-  #     B: {kind: hw, subs: [thermal, obc], t_max_c: 60.0, soc_min_pct: null, theta_max_deg: null}
+  #     B: {kind: hw, subs: [thermal, obc], t_max_c: 60.0, soc_min_pct: null, theta_max_deg: null,
+  #         heating_rate_c_s: 1.5, heater_min_rise_c_s: 0.5}
 
 ingest:
   hold_s: 3.0                     # a value is held this long after its last message, then stale
@@ -27,3 +30,16 @@ ingest:
   clock_offset_window: 50         # samples per source for the median offset
   clock_warn_every_s: 60.0        # rate limit for the clock warning
   max_jump_s: 300.0               # a clock jump larger than this re-syncs ticks instead of replaying them
+
+forecast:
+  window_s: 8                     # trajectory forecaster: least-squares slope over the last 8 ticks (Phase 2)
+  decision_horizon_s: 60          # q = p_std at this horizon (D4)
+  ensemble:
+    enabled: true                 # use the learned ensemble for twin satellites when it loads
+    models_dir: data/models       # full_s*.pt + understanding.npz + calibration.json (Youssef, Phase 2)
+    allow_uncalibrated: false     # true: run without calibration.json, model name gets "-uncalibrated"
+
+monitor:
+  window_s: 10                    # ticks of fresh thermal telemetry a rule looks at
+  freeze_eps_c: 1.0e-6            # temp_c identical to this precision for the whole window = frozen
+  recover_s: 10                   # consistent ticks before an untrusted channel is trusted again

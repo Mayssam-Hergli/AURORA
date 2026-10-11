@@ -32,6 +32,8 @@ def profiles(cfg: dict) -> dict[str, SatProfile]:
             t_max_c=p.get("t_max_c"),
             soc_min_pct=p.get("soc_min_pct"),
             theta_max_deg=p.get("theta_max_deg"),
+            heating_rate_c_s=float(p["heating_rate_c_s"]),
+            heater_min_rise_c_s=float(p["heater_min_rise_c_s"]),
         )
     return out
 
