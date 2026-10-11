@@ -5,6 +5,8 @@
 ## Decisions taken overnight
 - Step 3 (G4) had not been committed by the morning block; committed locally as `503d9e7` before starting (tests had passed, tree unchanged).
 - G4 reads "flagged, **contained (action chosen by J)**, healed" (Mayssam, 11 Oct): J keeps choosing `isolate_subsystem` for a single latched A1; quarantine is not forced.
+- Escalation (task 2): R in J(a) is now the **expected number of satellites reaching F** (sum of risks), not the max, so actions that spare more satellites score lower. A hazardous command (HEATER on, SET_MODE SCIENCE/WHEEL_TEST, not from the core) seen ≥ 2 times from one origin is a continuing threat in the sandbox (relays from isl:X only over feasible, enabled links; refused in SAFE). Ladder isolate_subsystem/block_source → safe_mode → quarantine; trigger: heater ON again > 2 s after the action, or P(F<60s) ≥ 0.50 for 20 s; 2 consecutive failing ticks. Heal waits until the threat is quiet (2 × period + 5 s). Values in `cassandra/config.yaml` `act`.
+- Observed: for A1 with re-assertion, safe_mode holds (SAFE refuses HEATER on), so A1 never needs quarantine; quarantine is reached when safe_mode itself fails (relays from a compromised neighbour, a stuck heater).
 
 ## Open questions
 - (none yet)
@@ -41,6 +43,9 @@ G0 ✅ 2026-10-10 (`make test`: 18 passed on Python 3.11.17, pinned set in `requ
 | Monitor false alarms, clean replay, 12 twin satellites x 600 s | 0 | `tests/cassandra/test_monitor.py::test_clean_replay_run_raises_no_alarm` (simulated) |
 | A1 closed loop, replay plant, core in the loop, no broker (seed 3): heater latched on E at t = 60 s | flagged t = 166 s; isolate_subsystem at t = 187 s, 42.0 C (forecast ETA to T_max 45 C: 28 s); max true temp 41.7 C; healed t = 368 s at 29.9 C; no other satellite changed state; planning 23 ms | `tests/cassandra/test_act.py` (simulated; sandbox = simulator, so an upper bound) |
 | A1 live through Mosquitto, `make demo-sw SPEED=20 SEED=3` + `make attack A1 TARGET=E` (2026-10-11) | flagged at P(F<60s)=0.31; isolate_subsystem at 41.2 C (ETA to 45 C: 29 s), cause "heater latched ON (origin=ground, 116 s ago)", SPARTA IA-0009; healed at 29.4 C; tick latency median 1.8 ms, p95 3.1 ms; planning 41 ms (laptop, WSL) | core console output; `tests/integration/test_a1_software.py` (simulated plant) |
+| A1 with re-assertion every 150 s (in process, seed 3) | isolate_subsystem at t = 187 s; heater ON again 24 s later → escalation to safe_mode at t = 211 s (alternative: quarantine); heal held while commands arrive; healed at t = 511 s; max true temp 41.6 C; no other satellite touched | `tests/cassandra/test_escalation.py` (simulated) |
+| A1 with re-assertion every 5 s (in process, seed 3) | first plan already rates isolate_subsystem at J = 0.95 (heater re-latched in the shadow) → safe_mode at t = 187 s; healed after stop at 28.6 C; max 41.6 C | `tests/cassandra/test_escalation.py` (simulated) |
+| A1 `--reassert` through Mosquitto (20x) then `--stop` | contained beyond isolation (safe_mode), "holding containment" while commands arrive, healed after stop, max < 45 C | `tests/integration/test_a1_software.py::test_a1_reassert_escalates_beyond_isolation_and_heals_after_stop` |
 | — | none yet: every number in the technical report comes from PR #1's results, which are not in this repo; re-run in Phase 2 | — |
 
 ## Known limitations (said out loud in the demo and paper)

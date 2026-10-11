@@ -78,8 +78,10 @@ class Proc:
         return f"--- {self.name} ---\n" + "\n".join(self.lines[-40:])
 
 
-def test_a1_flagged_contained_and_healed_through_the_broker():
-    seen = {"state": [], "action": [], "event": [], "temp_E": []}
+def live_run(attack_steps: list[list[str]], seed: int = 3, settle_sim_s: int = 600) -> dict:
+    """Core + plant (20x) + the given attacker commands, run one after the other. Returns what a
+    dashboard would have seen: node states, actions, events and E's reported temperature."""
+    seen = {"state": [], "action": [], "event": [], "temp_E": [], "logs": ""}
     lock = threading.Lock()
     t_start = time.time()
 
@@ -95,34 +97,34 @@ def test_a1_flagged_contained_and_healed_through_the_broker():
             elif kind == "tm":
                 seen["temp_E"].append(msg.fields["temp_c"])
 
+    def e_states():
+        with lock:
+            return [s for sat, s, _ in seen["state"] if sat == "E"]
+
     watcher = Bus(f"g4-watch-{uuid.uuid4().hex[:6]}")
     for f in (f"{T.PREFIX}/sat/+/state", T.tm("E", "thermal"), T.ACTION, T.EVENT):
         watcher.subscribe(f, on_msg)
     assert watcher.start()
-
     core = Proc("core", ["-m", "cassandra", "--client-id", f"g4-core-{uuid.uuid4().hex[:6]}"])
     plant = None
     try:
         assert core.ready("CASSANDRA core running"), core.log()
         plant = Proc(
-            "plant", ["scripts/replay_twin.py", "--speed", str(SPEED), "--duration", "900", "--seed", "3"]
+            "plant",
+            ["scripts/replay_twin.py", "--speed", str(SPEED), "--duration", "1800", "--seed", str(seed)],
         )
         assert plant.ready("replay twin:"), plant.log()
         time.sleep(60 / SPEED)  # one minute of clean operations first
-        attack = subprocess.run(
-            [sys.executable, "-m", "attacks.run", "--scenario", "A1", "--target", "E"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        assert attack.returncode == 0, attack.stdout + attack.stderr
-
-        def e_states():
-            with lock:
-                return [s for sat, s, _ in seen["state"] if sat == "E"]
-
-        deadline = time.time() + 600 / SPEED + 30  # ten simulated minutes, plus process slack
+        for argv in attack_steps:
+            r = subprocess.run(
+                [sys.executable, "-m", "attacks.run", *argv],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            assert r.returncode == 0, r.stdout + r.stderr
+        deadline = time.time() + settle_sim_s / SPEED + 30
         while time.time() < deadline:
             st = e_states()
             if "flagged" in st and st[-1] == "nominal" and st.index("flagged") < len(st) - 1:
@@ -134,13 +136,16 @@ def test_a1_flagged_contained_and_healed_through_the_broker():
             plant.stop()
         core.stop()
         watcher.stop()
+    seen["logs"] = core.log() + "\n" + (plant.log() if plant else "")
+    seen["E"] = e_states()
+    return seen
 
-    logs = core.log() + "\n" + (plant.log() if plant else "")
-    st = e_states()
+
+def check_contained_and_healed(seen: dict) -> list:
+    logs, st = seen["logs"], seen["E"]
     assert "flagged" in st and st[-1] == "nominal", f"E states {st}\n{logs}"
     acts = [a for a in seen["action"] if a.action != "none"]
-    assert [a.target for a in acts] == ["E"], f"actions {[(a.target, a.action) for a in acts]}\n{logs}"
-    assert acts[0].action in ("isolate_subsystem", "safe_mode", "quarantine")
+    assert {a.target for a in acts} == {"E"}, f"actions {[(a.target, a.action) for a in acts]}\n{logs}"
     assert max(seen["temp_E"]) < 45.0, f"E reached {max(seen['temp_E']):.1f} C"
     heal = [e for e in seen["event"] if e.kind == "heal" and e.sat == "E" and "healed" in e.text]
     assert heal, logs
@@ -148,3 +153,35 @@ def test_a1_flagged_contained_and_healed_through_the_broker():
     assert not others, f"other satellites changed state: {others}"
     for a in seen["action"]:
         S.parse(T.ACTION, S.dump(a))
+    return acts
+
+
+def test_a1_flagged_contained_and_healed_through_the_broker():
+    seen = live_run([["--scenario", "A1", "--target", "E"]])
+    acts = check_contained_and_healed(seen)
+    assert acts[0].action in ("isolate_subsystem", "safe_mode", "quarantine")
+
+
+def test_a1_reassert_escalates_beyond_isolation_and_heals_after_stop():
+    """--reassert: the attacker keeps re-sending HEATER on (every 5 simulated s at 20x), then stops."""
+    period_wall, attack_wall = 5 / SPEED, 300 / SPEED
+    seen = live_run(
+        [
+            [
+                "--scenario",
+                "A1",
+                "--target",
+                "E",
+                "--reassert",
+                str(period_wall),
+                "--duration",
+                str(attack_wall),
+            ],
+            ["--stop", "--target", "E"],
+        ]
+    )
+    acts = check_contained_and_healed(seen)
+    assert acts[-1].action in ("safe_mode", "quarantine"), [a.action for a in acts]  # beyond isolation
+    hold = [e for e in seen["event"] if e.sat == "E" and "holding containment" in e.text]
+    heal = [e for e in seen["event"] if e.sat == "E" and e.kind == "heal" and "healed" in e.text]
+    assert hold and heal[0].t > hold[0].t, seen["logs"]  # no heal while the commands were still arriving

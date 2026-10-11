@@ -13,6 +13,13 @@ P below is P(F < t + horizon_s), horizon_s = 60 by default (config explains why 
 - Verifier: heal when temp_c is trusted and below heal_below_c and P < calm_p for calm_ticks
   consecutive ticks: SET_MODE NOMINAL, re-enable the links the core cut, state nominal.
 - A flagged satellite on which nothing was done returns to nominal after unflag_ticks calm ticks.
+- Repeated commands: a hazardous command (HEATER on, SET_MODE SCIENCE / WHEEL_TEST) seen at least
+  threat_min_count times from the same origin is a Threat that the sandbox models as continuing.
+  Healing waits until it has gone quiet (no copy for threat_quiet_factor x its period + 5 s).
+- Escalation: when a containment does not hold (the heater is ON again after a cut, or P stays
+  >= plan_p for escalate_after_s), the satellite is re-planned with J over the stronger actions only:
+  isolate_subsystem / block_source -> safe_mode -> quarantine (+ reroute). Each step is explained;
+  when quarantine does not hold either, the core says so and asks for ground action.
 - Every state is held at least min_dwell_s (no flapping).
 
 The executor only publishes contract messages with origin "core" (interfaces.md 3.2). It never
@@ -30,8 +37,20 @@ from aurora_common import schemas as S
 from cassandra import explain
 from cassandra.forecast import ForecastResult
 from cassandra.monitor import MonitorEvent
-from cassandra.sandbox import Candidate, Sandbox, Score
+from cassandra.sandbox import Candidate, Sandbox, Score, Threat
 from cassandra.world import SatProfile, WorldTick
+
+LADDER = {"block_source": 0, "isolate_subsystem": 0, "safe_mode": 1, "quarantine": 2}
+HAZARD_MODES = ("SCIENCE", "WHEEL_TEST")
+
+
+def hazardous(tc: S.Telecommand) -> bool:
+    """Commands that drive a satellite towards F when they come from someone else than the core."""
+    if tc.origin == "core":
+        return False
+    if tc.cmd == "HEATER":
+        return tc.args.get("on") is True
+    return tc.cmd == "SET_MODE" and tc.args.get("mode") in HAZARD_MODES
 
 
 @dataclass
@@ -159,6 +178,14 @@ class Responder:
         self.dwell = float(a["min_dwell_s"])
         self.replan = float(a["replan_s"])
         self.sus_window = float(a["suspicious_window_s"])
+        self.escalate_after = float(a["escalate_after_s"])
+        self.threat_min = int(a["threat_min_count"])
+        self.threat_quiet = float(a["threat_quiet_factor"])
+        self.hazards: deque = deque(maxlen=2000)  # hazardous telecommands seen on the bus
+        self.contained_at: dict[str, float] = {}
+        self.failing: dict[str, int] = defaultdict(int)
+        self.exhausted: set[str] = set()
+        self.holding: set[str] = set()
         self.state = {s: "nominal" for s in profiles}
         self.since = {s: -math.inf for s in profiles}
         self.last_plan = {s: -math.inf for s in profiles}
@@ -194,6 +221,47 @@ class Responder:
                 return {"cmd": tc.cmd, "args": dict(tc.args), "origin": tc.origin, "age_s": t - tc.t}
         return None
 
+    def threats(self, now: float) -> list[Threat]:
+        """Hazardous commands repeated from the same origin and still arriving."""
+        groups: dict[tuple, list[S.Telecommand]] = defaultdict(list)
+        for tc in self.hazards:
+            if now - tc.t > self.sus_window:
+                continue
+            args = tuple(sorted(tc.args.items()))
+            # a relaying neighbour pushes to many satellites; a ground/unknown origin targets one
+            key = (
+                (tc.origin, tc.cmd, args)
+                if tc.origin.startswith("isl:")
+                else (tc.origin, tc.cmd, args, tc.sat)
+            )
+            groups[key].append(tc)
+        out = []
+        for key, tcs in groups.items():
+            times = sorted({round(tc.t, 1) for tc in tcs})
+            if len(times) < self.threat_min:
+                continue
+            gaps = [b - a for a, b in zip(times, times[1:]) if b - a > 0.5]
+            if not gaps:
+                continue
+            period = float(sorted(gaps)[len(gaps) // 2])
+            if now - times[-1] > self.threat_quiet * period + 5.0:
+                continue  # gone quiet
+            out.append(
+                Threat(
+                    key[0],
+                    key[1],
+                    key[2],
+                    tuple(sorted({tc.sat for tc in tcs})),
+                    period,
+                    times[-1],
+                    len(times),
+                )
+            )
+        return out
+
+    def threat_on(self, sat: str, threats: list[Threat]) -> Threat | None:
+        return next((th for th in threats if sat in th.sats), None)
+
     def suspicious_origins(self, sat: str, t: float) -> list[str]:
         return sorted(
             {
@@ -217,6 +285,9 @@ class Responder:
         now = tick.t + 1.0  # the tick just closed; messages are stamped with its end
         for tc in tick.tcs:
             self.recent_tcs[tc.sat].append(tc)
+            if hazardous(tc):
+                self.hazards.append(tc)
+        threats = self.threats(now)
         hits = {e.sat for e in monitor_events if e.kind == "hit"}
         for e in monitor_events:
             out.events.append(explain.monitor(now, e))
@@ -236,8 +307,12 @@ class Responder:
                     self.calm_run[sat] = 0
                     st = "flagged"
             if st == "flagged" and dwell_ok and f is not None and not f.warming_up:
-                if p >= self.plan_p and now - self.last_plan[sat] >= self.replan:
-                    self._plan_and_act(out, now, sat, tick, f, forecasts, bad_trust)
+                if (
+                    self.contained[sat] is None
+                    and p >= self.plan_p
+                    and now - self.last_plan[sat] >= self.replan
+                ):
+                    self._plan_and_act(out, now, sat, tick, f, forecasts, bad_trust, threats)
                 elif self.contained[sat] is None:
                     self.calm_run[sat] = self.calm_run[sat] + 1 if (p < self.calm and not bad_trust) else 0
                     if self.calm_run[sat] >= self.unflag:
@@ -250,15 +325,38 @@ class Responder:
                         )
                         self.calm_run[sat] = 0
             if self.contained[sat] is not None and self.state[sat] != "nominal":
+                why = self._not_holding(sat, tick, p, now)
+                self.failing[sat] = self.failing[sat] + 1 if why else 0
+                if self.failing[sat] >= 2:
+                    self._escalate(out, now, sat, tick, f, forecasts, bad_trust, threats, why)
+                    continue
                 ready = self.verifier.update(sat, prof, tick, f, bad_trust)
                 if ready and now - self.since[sat] >= self.dwell:
+                    th = self.threat_on(sat, threats)
+                    if th is not None:
+                        if sat not in self.holding:
+                            self.holding.add(sat)
+                            out.events.append(explain.holding(now, sat, th))
+                        continue
                     self._heal(out, now, sat, tick)
         return out
 
-    def _plan_and_act(self, out, now, sat, tick, f, forecasts, untrusted_temp):
-        import time as _time
+    def _not_holding(self, sat: str, tick: WorldTick, p: float, now: float) -> str:
+        """Why the current containment is failing ('' = it holds)."""
+        action, since = self.contained[sat], self.contained_at.get(sat, now)
+        th = tick.fresh(sat, "thermal")
+        if (
+            action in ("isolate_subsystem", "safe_mode", "quarantine")
+            and th
+            and th["heater_on"]
+            and now - since > 2
+        ):
+            return f"heater ON again {now - since:.0f} s after {action}"
+        if p >= self.plan_p and now - since >= self.escalate_after:
+            return f"P(F<{self.horizon}s)={p:.2f} still >= {self.plan_p} {now - since:.0f} s after {action}"
+        return ""
 
-        self.last_plan[sat] = now
+    def _inputs(self, forecasts):
         temps = {
             s: r.driver.value
             for s, r in forecasts.items()
@@ -267,9 +365,77 @@ class Responder:
         rates = {
             s: r.driver.rate_per_s for s, r in forecasts.items() if r.driver and r.driver.channel == "temp_c"
         }
+        return temps, rates
+
+    def _execute(self, out, now, sat, tick, chosen: Score, gated) -> None:
+        peers = [s for s in self.profiles if s != sat]
+        out.tcs += self.executor.carry_out(now, Candidate(chosen.action, sat, chosen.args), peers, tick.links)
+        self.contained[sat] = chosen.action
+        self.contained_at[sat] = now
+        self.failing[sat] = 0
+        self.holding.discard(sat)
+        self.verifier.reset(sat)
+        if chosen.action == "quarantine":
+            self.safety.record_quarantine(now)
+            self._set(out, now, sat, "quarantined", f"{chosen.action} (J={chosen.J:.2f})")
+        elif chosen.action == "safe_mode":
+            why = "uncertainty gate: safe hold, ground alerted" if gated else f"safe_mode (J={chosen.J:.2f})"
+            self._set(out, now, sat, "safe_hold", why)
+
+    def _escalate(self, out, now, sat, tick, f, forecasts, untrusted_temp, threats, why):
+        import time as _time
+
+        self.failing[sat] = 0
+        level = LADDER.get(self.contained[sat], 0)
+        stronger = tuple(a for a, lv in LADDER.items() if lv > level and a != "block_source")
+        budget_ok = self.safety.budget_ok(now)
+        if not budget_ok:
+            stronger = tuple(a for a in stronger if a != "quarantine")
+        if not stronger or f is None:
+            if sat not in self.exhausted:
+                self.exhausted.add(sat)
+                out.events.append(explain.exhausted(now, sat, self.contained[sat], why, budget_ok))
+            return
+        temps, rates = self._inputs(forecasts)
+        t0 = _time.perf_counter()
+        ranked = self.sandbox.plan(
+            tick, sat, f.q, temps, rates, self.suspicious_origins(sat, now), budget_ok, threats, stronger
+        )
+        out.plan_ms.append((_time.perf_counter() - t0) * 1000)
+        if not ranked:
+            return
+        gated = self.safety.gate(f.q)
+        chosen = ranked[0]
+        if gated:
+            chosen = next((s for s in ranked if s.action == "safe_mode"), chosen)
+        action, event = explain.decision(
+            now,
+            sat,
+            f,
+            chosen,
+            ranked,
+            self.cause(sat, now),
+            untrusted_temp,
+            gated,
+            "",
+            horizon=self.horizon,
+            theta=self.safety.theta,
+            lead=f"escalation: {self.contained[sat]} did not hold ({why}) -> ",
+        )
+        out.actions.append(action)
+        out.events.append(event)
+        self._execute(out, now, sat, tick, chosen, gated)
+
+    def _plan_and_act(self, out, now, sat, tick, f, forecasts, untrusted_temp, threats=()):
+        import time as _time
+
+        self.last_plan[sat] = now
+        temps, rates = self._inputs(forecasts)
         budget_ok = self.safety.budget_ok(now)
         t0 = _time.perf_counter()
-        ranked = self.sandbox.plan(tick, sat, f.q, temps, rates, self.suspicious_origins(sat, now), budget_ok)
+        ranked = self.sandbox.plan(
+            tick, sat, f.q, temps, rates, self.suspicious_origins(sat, now), budget_ok, list(threats)
+        )
         out.plan_ms.append((_time.perf_counter() - t0) * 1000)
         gated = self.safety.gate(f.q)
         chosen: Score = ranked[0]
@@ -294,21 +460,7 @@ class Responder:
         out.events.append(event)
         if chosen.action == "none":
             return
-        peers = [s for s in self.profiles if s != sat]
-        out.tcs += self.executor.carry_out(now, Candidate(chosen.action, sat, chosen.args), peers, tick.links)
-        self.contained[sat] = chosen.action
-        self.verifier.reset(sat)
-        if chosen.action == "quarantine":
-            self.safety.record_quarantine(now)
-            self._set(out, now, sat, "quarantined", f"{chosen.action} (J={chosen.J:.2f})")
-        elif chosen.action == "safe_mode":
-            self._set(
-                out,
-                now,
-                sat,
-                "safe_hold",
-                "uncertainty gate: safe hold, ground alerted" if gated else f"safe_mode (J={chosen.J:.2f})",
-            )
+        self._execute(out, now, sat, tick, chosen, gated)
 
     def _heal(self, out, now, sat, tick):
         action = self.contained[sat]
@@ -328,5 +480,8 @@ class Responder:
             )
         )
         self.contained[sat] = None
+        self.contained_at.pop(sat, None)
+        self.exhausted.discard(sat)
+        self.holding.discard(sat)
         self.verifier.reset(sat)
         self._set(out, now, sat, "nominal", f"healed after {action}")

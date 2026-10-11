@@ -73,3 +73,6 @@ act:
   orbit_period_s: 5736.0          # 95.6 min at 550 km
   orbit_speedup: 8                # orbit time compression of the plant; budget window = period / speedup
   suspicious_window_s: 300        # telecommands this recent are candidate causes (a latched heater acts for minutes)
+  escalate_after_s: 20            # containment that leaves P >= plan_p this long is escalated
+  threat_min_count: 2             # a hazardous command seen this many times from one origin = continuing threat
+  threat_quiet_factor: 2.0        # a threat is over after quiet_factor x its period (+5 s) without a copy

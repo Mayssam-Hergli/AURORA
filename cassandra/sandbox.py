@@ -2,14 +2,19 @@
 
     J(a) = w_r R(a) + w_m (1 - U(a)) + w_c C(a) + w_q Q
 
-R: highest P(F < t + decision horizon) over the constellation after a `rollout_s` rollout with
-action a applied (1 if a limit is crossed during the rollout). U: fraction of satellites still in
-service. C: operational cost of a (config). Q: the forecast's q; when q is null (single model, D4)
-the Q term is left out, never replaced by 0 as if the model were certain.
+R: expected number of satellites reaching F, i.e. the sum over satellites of P(F < t + decision
+horizon) after a `rollout_s` rollout with action a applied (1 for a satellite whose limit is crossed
+during the rollout). A sum, not a max: an action that spares more satellites scores lower.
+U: fraction of satellites still in service. C: operational cost of a (config).
+Q: the forecast's q; when q is null (single model, D4) the Q term is left out, never replaced by 0
+as if the model were certain.
 
 Shadow model (fixes review finding M2). Twin satellites: a fresh SyntheticTwin seeded from the latest
 *observations* and with an *empty* command queue. The real attacker's future commands are never
-copied. Threat assumption: the last observed command effects persist (a latched heater stays on).
+copied. Threat assumption: the last observed command effects persist (a latched heater stays on),
+and a hazardous command seen at least twice from the same origin keeps arriving at its observed
+period (Threat). Relayed commands (origin isl:X) reach X's neighbours only over feasible, enabled
+links; a satellite in SAFE refuses them (interfaces.md 3.2).
 Hardware satellites: the ESP8266 firmware's own thermal model (+1.5 C/s heating, 3 % per 100 ms
 cooling towards 25 C).
 
@@ -78,6 +83,57 @@ class Score:
     J: float
     crossed: bool = False
     detail: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Threat:
+    """A hazardous command observed repeatedly from one origin: assumed to keep coming."""
+
+    origin: str
+    cmd: str
+    args: tuple  # sorted (key, value) pairs
+    sats: tuple[str, ...]  # satellites it was seen on
+    period_s: float
+    last_t: float
+    count: int
+
+    def due(self, now: float, horizon_s: int) -> list[int]:
+        """Rollout steps (0 = now) at which the next copies arrive."""
+        out, k = [], 1
+        while True:
+            t = self.last_t + k * self.period_s
+            if t >= now + horizon_s:
+                return out
+            if t >= now:
+                out.append(int(round(t - now)))
+            k += 1
+
+    def targets(self, tw) -> list[str]:
+        """Where the next copy lands in the shadow twin."""
+        if not self.origin.startswith("isl:"):
+            return [s for s in self.sats if s in tw.idx]
+        x = tw.idx.get(self.origin.split(":", 1)[1])
+        if x is None:
+            return []
+        t = min(tw.t, tw.T - 1)
+        return [
+            sat
+            for j, sat in enumerate(tw.sats)
+            if j != x and tw.geo.feasible[t, x, j] and tw.isl_enabled[x, j] and tw.isl_enabled[j, x]
+        ]
+
+
+def refused_in_safe(mode_safe: bool, origin: str, cmd: str, args: dict) -> bool:
+    """interfaces.md 3.2: what a satellite in SAFE refuses (decided from the command only)."""
+    if not mode_safe:
+        return False
+    if origin not in ("ground", "core"):
+        return True
+    if cmd == "HEATER":
+        return bool(args.get("on"))
+    if cmd == "SET_MODE":
+        return args.get("mode") not in ("NOMINAL", "SAFE")
+    return False
 
 
 # ----------------------------------------------------------------------------- engine hooks
@@ -219,9 +275,17 @@ class Sandbox:
         return {"t": tick.t, "sats": sats, "links": links}
 
     # ------------------------------------------------------------------ planning
-    def candidates(self, target: str, suspicious_origins: list[str], budget_ok: bool) -> list[Candidate]:
+    def candidates(
+        self,
+        target: str,
+        suspicious_origins: list[str],
+        budget_ok: bool,
+        allowed: tuple[str, ...] | None = None,
+    ) -> list[Candidate]:
         out = []
-        for a in self.allowed:
+        for a in allowed or self.allowed:
+            if a not in self.allowed:
+                continue
             if a == "quarantine" and not budget_ok:
                 continue
             if a == "block_source":
@@ -242,23 +306,33 @@ class Sandbox:
         rates: dict[str, float],
         suspicious_origins: list[str],
         budget_ok: bool,
+        threats: list[Threat] | None = None,
+        allowed: tuple[str, ...] | None = None,
     ) -> list[Score]:
-        """Every candidate scored, best (lowest J) first."""
-        cands = self.candidates(target, suspicious_origins, budget_ok)
+        """Every candidate scored, best (lowest J) first. `allowed` restricts the actions (escalation)."""
+        cands = self.candidates(target, suspicious_origins, budget_ok, allowed)
+        if not cands:
+            return []
+        now = tick.t + 1.0
+        threats = threats or []
         prof = self.profiles[target]
         if prof.kind == "hw":
-            return sorted((self._score_board(c, tick, temps, q) for c in cands), key=lambda s: s.J)
+            scores = [self._score_board(c, tick, temps, q, threats, now) for c in cands]
+            return sorted(scores, key=lambda s: s.J)
         obs = self.observation(tick, temps, rates)
         base = self.engine.shadow(obs)
         hw_out = [s for s, p in self.profiles.items() if p.kind == "hw"]
-        return sorted((self._score_twin(c, base, q, hw_out) for c in cands), key=lambda s: s.J)
+        scores = [self._score_twin(c, base, q, hw_out, threats, now) for c in cands]
+        return sorted(scores, key=lambda s: s.J)
 
     def _j(self, c: Candidate, R: float, U: float, q: float | None) -> float:
         J = self.w["w_r"] * R + self.w["w_m"] * (1 - U) + self.w["w_c"] * self.cost[c.action]
         return J + (self.w["w_q"] * q if q is not None else 0.0)
 
-    def _score_twin(self, c: Candidate, base, q: float | None, ignore: list[str]) -> Score:
-        from ml.synthetic.engine import MODE_NOMINAL
+    def _score_twin(
+        self, c: Candidate, base, q: float | None, ignore: list[str], threats: list[Threat], now: float
+    ) -> Score:
+        from ml.synthetic.engine import MODE_NOMINAL, MODE_SAFE
 
         tw = copy.deepcopy(base)
         peers = [s for s in tw.sats if s != c.target]
@@ -268,7 +342,18 @@ class Sandbox:
         temp = np.zeros((self.rollout, S))
         soc = np.zeros((self.rollout, S))
         crossed = np.zeros(S, bool)
+        due = {th: set(th.due(now, self.rollout)) for th in threats}
+        resent = 0
         for k in range(self.rollout):
+            for th, ks in due.items():
+                if k not in ks:
+                    continue
+                for sat in th.targets(tw):
+                    args = dict(th.args)
+                    if refused_in_safe(tw.mode[tw.idx[sat]] == MODE_SAFE, th.origin, th.cmd, args):
+                        continue
+                    tw.apply({"sat": sat, "origin": th.origin, "cmd": th.cmd, "args": args})
+                    resent += 1
             tw.step(1)
             temp[k], soc[k] = tw.temp, tw.soc * 100
             for s, sat in enumerate(tw.sats):
@@ -285,7 +370,7 @@ class Sandbox:
             if p is None or sat in ignore:
                 continue
             risk[sat] = 1.0 if crossed[s] else self._risk(p, temp[:, s], soc[:, s])
-        R = max(risk.values()) if risk else 0.0
+        R = float(sum(risk.values()))  # expected number of satellites reaching F
         in_service = [tw.mode[tw.idx[s]] == MODE_NOMINAL for s in tw.sats if s in self.profiles]
         U = float(np.mean(in_service)) if in_service else 1.0
         worst = max(risk, key=risk.get) if risk else None
@@ -303,6 +388,8 @@ class Sandbox:
                 "worst_sat": worst,
                 "target_temp_end_c": round(float(temp[-1, tw.idx[c.target]]), 2),
                 "target_risk": round(risk.get(c.target, 0.0), 3),
+                "at_risk": sorted(k for k, v in risk.items() if v >= 0.3),
+                "threat_copies_delivered": resent,
             },
         )
 
@@ -320,7 +407,15 @@ class Sandbox:
             best = max(best, float(np.clip(1 - eta / self.horizon, 0, 1)))
         return best
 
-    def _score_board(self, c: Candidate, tick: WorldTick, temps: dict[str, float], q: float | None) -> Score:
+    def _score_board(
+        self,
+        c: Candidate,
+        tick: WorldTick,
+        temps: dict[str, float],
+        q: float | None,
+        threats: list[Threat],
+        now: float,
+    ) -> Score:
         """ESP8266 board: the firmware's thermal model, one step per second."""
         b, p = self.board, self.profiles[c.target]
         th = tick.fresh(c.target, "thermal") or {
@@ -329,8 +424,15 @@ class Sandbox:
         }
         T = temps.get(c.target, th["temp_c"])
         heater = bool(th["heater_on"]) and c.action not in ("safe_mode", "quarantine", "isolate_subsystem")
+        safe = c.action in ("safe_mode", "quarantine")
+        due = set()
+        for t_ in threats:
+            if c.target in t_.sats and t_.cmd == "HEATER" and dict(t_.args).get("on"):
+                due |= set(t_.due(now, self.rollout))
         series, crossed = [], False
-        for _ in range(self.rollout):
+        for k in range(self.rollout):
+            if k in due and not safe:
+                heater = True  # the repeated command latches the heater again (refused only in SAFE)
             T = T + b["heat_c_s"] if heater else T + (b["ambient_c"] - T) * b["cool_per_s"]
             T = min(T, b["ceiling_c"])
             series.append(T)

@@ -76,6 +76,7 @@ def decision(
     budget_note: str = "",
     horizon: int = 60,
     theta: float = 0.35,
+    lead: str = "",
 ) -> tuple[S.Action, S.Event]:
     alts = [s for s in ranked if s is not chosen]
     sparta = techniques(cause, untrusted)
@@ -85,7 +86,8 @@ def decision(
         else f" · GATED: q={f.q:.2f} > {theta}, safe hold, alert ground" if gated else ""
     )
     text = (
-        f"[{sat}] P(F<{horizon}s)={f.p(horizon):.2f} ({f.model}) · cause: {cause_text(cause, f)}{eta_text(f)}"
+        f"[{sat}] {lead}P(F<{horizon}s)={f.p(horizon):.2f} ({f.model})"
+        f" · cause: {cause_text(cause, f)}{eta_text(f)}"
         f"{' · SPARTA ' + ', '.join(sparta) if sparta else ''} · action: {chosen.action} (J={chosen.J:.2f})"
         f" · alternatives: {', '.join(f'{a.action} {a.J:.2f}' for a in alts) or 'none'}{gate}{budget_note}"
     )
@@ -118,6 +120,36 @@ def decision(
         },
     )
     return action, event
+
+
+def holding(t: float, sat: str, th) -> S.Event:
+    who = th.origin
+    return S.Event(
+        t=t,
+        sat=sat,
+        level="warning",
+        kind="decision",
+        text=(
+            f"[{sat}] holding containment: {th.cmd} {dict(th.args)} from origin={who} still arriving "
+            f"every ~{th.period_s:.0f} s ({th.count} seen); heal waits until it stops"
+        ),
+        data={"origin": who, "period_s": th.period_s, "count": th.count},
+    )
+
+
+def exhausted(t: float, sat: str, action: str | None, why: str, budget_ok: bool) -> S.Event:
+    extra = "" if budget_ok else " (isolation budget reached: quarantine not available)"
+    return S.Event(
+        t=t,
+        sat=sat,
+        level="alarm",
+        kind="decision",
+        text=(
+            f"[{sat}] {action} did not hold ({why}) and no stronger action is left{extra}: "
+            "ground action required"
+        ),
+        sparta=["CM0042"],
+    )
 
 
 def state_change(t: float, sat: str, old: str, new: str, why: str) -> S.Event:
