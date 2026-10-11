@@ -38,13 +38,21 @@ def _slope(x: np.ndarray, w: int) -> np.ndarray:
     return (win * k).sum(-1) / (k**2).sum()
 
 
-def trajectory_score(raw: np.ndarray, crit: dict, horizon: float = 60.0, w: int = 8) -> np.ndarray:
-    out = []
+def trajectory_score(
+    raw: np.ndarray,
+    crit: dict,
+    horizon: float = 60.0,
+    w: int = 8,
+    channels: tuple[str, ...] = ("temp_c", "soc_pct", "att_err_deg"),
+) -> np.ndarray:
+    out = [np.zeros(raw.shape[:-1])]  # no limit in `channels` -> score 0
     for name, limit, sign in (
         ("temp_c", crit["t_max_c"], 1),
         ("soc_pct", crit["soc_min_pct"], -1),
         ("att_err_deg", crit["theta_max_deg"], 1),
     ):
+        if name not in channels:
+            continue
         x = raw[..., CH[name]].astype(np.float64)
         rate = _slope(x, w) * sign
         gap = (limit - x) * sign

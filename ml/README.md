@@ -19,10 +19,12 @@
 | `export.py` | TorchScript export + latency benchmark (run it on the Raspberry Pi) |
 
 ```bash
+make models                          # trained ensemble from the GitHub release (enough to run the core)
 python -m ml.synthetic.generate      # episodes -> data/episodes/<split>/
 python -m ml.features                # caches -> data/cache/
 python -m ml.train all --parallel 1  # models -> data/models/ (gitignored)
 python -m ml.export                  # TorchScript + results/latency.json
+python -m ml.export --bundle v1      # dist/aurora-models-v1.zip, the release asset
 ```
 
 **Interfaces it uses:**

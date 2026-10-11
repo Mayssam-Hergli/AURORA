@@ -1,9 +1,12 @@
 # ML pipeline (owner: Youssef Mhamdi). Moved verbatim from the top-level Makefile on 2026-10-11.
 
-.PHONY: data generate cache train evaluate closed-loop robustness stress export figures numbers all
+.PHONY: data models generate cache train evaluate closed-loop robustness stress export figures numbers all
 
 data:            ## CuCD-ID, OPS-SAT-AD and a SCAD subset into data/ (gitignored)
 	$(PY) -m eval.datasets.download all
+
+models:          ## trained ensemble + calibration.json from the GitHub release into data/models/ (SHA-256 checked)
+	$(PY) -m eval.datasets.download models
 
 generate:        ## M1: synthetic episodes in the Section 6.3 format
 	$(PY) -m ml.synthetic.generate

@@ -11,12 +11,14 @@ The per-tick frame is built exactly like ml/features.py builds it offline (same 
 last value on gaps, counter increments, command counts per origin and type);
 tests/test_model_features_metrics.py
 checks that both paths give identical model inputs. If no model is loaded, the Phase-2 trajectory
-forecaster is used as the fallback (model = "trajectory-v0").
+forecaster is used as the fallback (model = "trajectory-v0"); it ignores a limit until its channel
+has arrived for a full slope window. Trained models: `make models` (see ml/export.py --bundle).
 """
 
 from __future__ import annotations
 
 import json
+import warnings
 from collections import deque
 
 import numpy as np
@@ -27,6 +29,8 @@ from ml import graph as G
 from ml.model import HORIZONS
 
 CH = {c: i for i, c in enumerate(G.FLAT)}
+LIMIT_CHANNELS = ("temp_c", "soc_pct", "att_err_deg")  # the three terms of F (CONTEXT Section 3)
+SLOPE_W = 8  # samples in the fallback's trajectory slope (Phase-2 predictor)
 DIRECT = {
     "thermal": ["temp_c", "heater_on"],
     "eps": ["soc_pct", "bus_v", "load_w", "solar_w", "current_ma"],
@@ -45,6 +49,7 @@ class FrameBuilder:
         S = len(self.sats)
         self.last = np.zeros((S, len(G.FLAT)), np.float32)  # held telemetry values
         self.seen = np.zeros((S, len(G.FLAT)), bool)
+        self.age = np.zeros((S, len(G.FLAT)), np.int64)  # frames closed since the channel first arrived
         self.counters = np.full((S, 2), np.nan)  # cmd_ok, cmd_rej
         self.prev_counters = np.full((S, 2), np.nan)
         self.cmd_counts = np.zeros((S, 6), np.float32)
@@ -106,7 +111,19 @@ class FrameBuilder:
         self.prev_counters = cur
         self.counters = np.full_like(self.counters, np.nan)
         self.cmd_counts[:] = 0
+        self.age += self.seen
         return f, self.links.copy()
+
+
+def calibration_temperature() -> float:
+    """Validation temperature (eval.harness): model bundle first, then this machine's own results."""
+    for path in (config.MODELS / "calibration.json", config.RESULTS / "eval" / "metrics.json"):
+        if path.exists():
+            return float(json.loads(path.read_text())["temperature"])
+    warnings.warn(
+        "no calibration temperature found: P(F) is uncalibrated (T = 1.0); run `make models`", stacklevel=2
+    )
+    return 1.0
 
 
 class OnlineForecaster:
@@ -123,11 +140,13 @@ class OnlineForecaster:
         from ml.train import load_model
 
         names = names or sorted(p.stem for p in config.MODELS.glob("full_s*.pt"))
+        if not names:
+            warnings.warn(
+                "no trained models in data/models: using the trajectory fallback (run `make models`)",
+                stacklevel=2,
+            )
         models = [load_model(n) for n in names]
-        temp = 1.0
-        metrics = config.RESULTS / "eval" / "metrics.json"
-        if metrics.exists():
-            temp = json.loads(metrics.read_text()).get("temperature", 1.0)
+        temp = calibration_temperature() if models else 1.0
         return cls(models, config.load("synthetic")["satellites"], temp, config.load("model")["window_s"])
 
     on_telemetry = property(lambda self: self.frames.on_telemetry)
@@ -180,8 +199,13 @@ class OnlineForecaster:
         raw = np.stack(list(self.buffer))[None]
         out = []
         for i, s in enumerate(self.sats):
+            # A channel not yet received is held at 0, which reads as SOC below SOC_min or as a jump
+            # to the first real temperature. A limit counts only once its slope window is all real.
+            ready = tuple(c for c in LIMIT_CHANNELS if self.frames.age[i, CH[c]] >= SLOPE_W)
+            x = raw[:, :, i : i + 1]
             p = {
-                h: float(trajectory_score(raw[:, :, i : i + 1], crit, horizon=h)[0, -1, 0]) for h in HORIZONS
+                h: float(trajectory_score(x, crit, horizon=h, w=SLOPE_W, channels=ready)[0, -1, 0])
+                for h in HORIZONS
             }
             msg = schema.forecast_message(s, t, p, {h: 0.0 for h in HORIZONS}, "thermal", 0.0)
             msg["model"] = "trajectory-v0"

@@ -2,18 +2,25 @@
 
     python -m ml.export                    # data/models/ts/<name>.ts.pt + results/latency.json
     python -m ml.export --bench-only       # latency of the eager models on this machine
+    python -m ml.export --bundle v1        # dist/aurora-models-v1.zip for a GitHub release
 
 Run the same command on the Raspberry Pi to get the number the paper needs (budget: 150 ms per
 tick for inference + planning). TorchScript files are loaded with torch.jit.load and need only
 `torch` on the target, not this repository.
+
+The bundle is how the team gets the trained ensemble (data/models/ is gitignored): the release
+asset is fetched and checksummed by `make models` (eval/datasets/download.py).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import time
+import zipfile
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -79,10 +86,43 @@ def latency(models, threads: int = 1, repeats: int = 50) -> dict:
     )
 
 
+def _entry(name: str) -> zipfile.ZipInfo:
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))  # fixed time: same files, same zip
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.create_system = 0
+    return info
+
+
+def bundle(tag: str) -> Path:
+    """Zip what OnlineForecaster.from_models needs: ensemble, understanding, calibration."""
+    members = sorted(config.MODELS.glob("full_s*.pt"))
+    if not members:
+        raise FileNotFoundError(f"no full_s*.pt in {config.MODELS}: train or copy the ensemble first")
+    files = members + [config.MODELS / "understanding.npz", config.MODELS / "understanding.json"]
+    metrics = json.loads((config.RESULTS / "eval" / "metrics.json").read_text())
+    calibration = {
+        "temperature": metrics["temperature"],
+        "tau": metrics["tau"],
+        "source": "results/eval/metrics.json (eval.harness, validation split)",
+    }
+    out = config.ROOT / "dist" / f"aurora-models-{tag}.zip"
+    out.parent.mkdir(exist_ok=True)
+    with zipfile.ZipFile(out, "w") as z:
+        for p in files:
+            z.writestr(_entry(p.name), p.read_bytes())
+        z.writestr(_entry("calibration.json"), json.dumps(calibration, indent=1))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--bench-only", action="store_true")
+    ap.add_argument("--bundle", metavar="TAG", help="zip the ensemble into dist/aurora-models-TAG.zip")
     a = ap.parse_args(argv)
+    if a.bundle:
+        out = bundle(a.bundle)
+        print(f"{out}\nsha256 {hashlib.sha256(out.read_bytes()).hexdigest()}")
+        return
     names = sorted(p.stem for p in config.MODELS.glob("full_s*.pt"))
     res = {}
     if a.bench_only:
