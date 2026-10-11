@@ -51,6 +51,8 @@ packaging==26.3
     #   black
     #   matplotlib
     #   pytest
+paho-mqtt==2.1.0
+    # via -r requirements.txt
 pandas==3.0.6
     # via -r requirements.txt
 pathspec==1.1.1

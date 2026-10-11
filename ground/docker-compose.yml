@@ -1,0 +1,13 @@
+# AURORA ground bus. Started by `make up` (mk/core.mk) as compose project "aurora-ground",
+# so it never touches the Phase 2 Redis fallback (sat_b_redis on 6379).
+services:
+  mqtt:
+    # pinned digest of eclipse-mosquitto:2 as pulled on 2026-10-11
+    image: eclipse-mosquitto:2@sha256:38c0da4f2ef84284d47b3b3eeea1cb3bdeabe81ee10caf0cd5c5ff61ee3ea408
+    container_name: aurora_mqtt
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # MQTT over WebSockets (dashboard)
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped

@@ -2,7 +2,14 @@
 
 **For:** Claude Code, working in the `AURORA` repo with Mayssam Hergli.
 **Written:** Saturday, 10 October 2026. Build deadline: **Wednesday, 14 October 2026**, then the live final at the Congress, with a recorded backup.
-**Ownership:** Mayssam owns **every lane** from now on. This file replaces the lane split in `Aurora_Status.pdf` (Youssef Mhamdi, 10 Oct). Youssef's PR #1 (`ml/`, `eval/`) is merged and is the foundation.
+**Ownership (updated 11 Oct, supersedes the 10 Oct "Mayssam owns every lane"):**
+
+| Owner | Folders | Phases |
+|---|---|---|
+| **Mayssam Hergli** (with Claude Code) | `docs/interfaces.md`, `aurora_common/`, `ground/`, `cassandra/`, `attacks/`, `hardware/`, `prototype/phase2-demo/`, `scripts/`, `mk/core.mk` | 0, 1, 4, 5, 6, 8, and the demo script, preflight and recording of 9 |
+| **Youssef Mhamdi** | `ml/`, `eval/`, `twin/`, `dashboard/`, `docs/paper/`, `mk/ml.mk`, `mk/twin.mk` | 2, 3, 7, and the numbers and paper of 9 |
+
+Neither side edits the other's folders. What the core needs from `ml/` goes through an adapter on the core side (`cassandra/sandbox.py` stubs `snapshot(include_queue=False)` and `seed_from_observation(obs)` until Youssef's engine provides them). Until `twin/service.py` exists, the core is tested with `scripts/replay_twin.py`, which publishes `SyntheticTwin.messages_at(t)` onto the bus. Youssef's PR #1 (`ml/`, `eval/`) is merged and is the foundation.
 **Companion files:** `docs/CONTEXT.md` (full project context: architecture, schemas, scenarios) and `phase2_kit.zip` (the working Phase 2 demo code).
 
 ---
@@ -97,22 +104,22 @@
 
 ## 3. Gates (definition of done)
 
-| Gate | Done when | Target |
-|---|---|---|
-| **G0** Healthy repo | `make test` green on Python 3.11 with pinned deps; `STATUS.md` exists | Sat 10 |
-| **G1** Contract + bus | `docs/interfaces.md` frozen; `aurora_common` tests pass; `make up` starts Mosquitto (1883 + WebSocket 9001); `mqtt_tail.py` shows a test message | Sat 10 |
-| **G2** ML fixed | M1–M5 and S1–S7, S9, S10 fixed with tests; pipeline re-run; `results/manifest.json` committed; trained models on disk | Sun 11 |
-| **G3** Live twin | 12 twin satellites on the bus at 1 Hz; a HEATER command visibly heats; a recorded run opens with `ml.schema.read_episode` | Sun 11 |
-| **G4** Lane 1 done | `make demo-sw` + `attacks A1`: the target is flagged, quarantined and healed **with no manual step**, and the gt-isolation test passes | Mon 12 |
-| **G5** All scenarios + dashboard | A1, B1 and C1 each handled in software; Open MCT shows telemetry, P(F), states, events and links, and survives a broker restart | Tue 13 |
-| **G6** Board joins | The ESP8266 board is satellite B on the bus; A1 against B heats the board, the core quarantines and heals it, and the LEDs follow | Tue 13 |
-| **G7** Ship | Numbers regenerated; paper compiles with macros; backup video recorded; `v1.0-final` tag (with OK) | Wed 14 |
+| Gate | Done when | Owner | Target |
+|---|---|---|---|
+| **G0** Healthy repo | `make test` green on Python 3.11 with pinned deps; `STATUS.md` exists | Mayssam | Sat 10 |
+| **G1** Contract + bus | `docs/interfaces.md` frozen; `aurora_common` tests pass; `make up` starts Mosquitto (1883 + WebSocket 9001); `mqtt_tail.py` shows a test message | Mayssam | Sat 10 |
+| **G2** ML fixed | M1–M5 and S1–S7, S9, S10 fixed with tests; pipeline re-run; `results/manifest.json` committed; trained models on disk | Youssef | Sun 11 |
+| **G3** Live twin | 12 twin satellites on the bus at 1 Hz; a HEATER command visibly heats; a recorded run opens with `ml.schema.read_episode` | Youssef | Sun 11 |
+| **G4** Lane 1 done | `make demo-sw` + `attacks A1`: the target is flagged, quarantined and healed **with no manual step**, and the gt-isolation test passes. Until G3, the plant is `scripts/replay_twin.py` | Mayssam | Mon 12 |
+| **G5** All scenarios + dashboard | A1, B1 and C1 each handled in software (Mayssam); Open MCT shows telemetry, P(F), states, events and links, and survives a broker restart (Youssef) | both | Tue 13 |
+| **G6** Board joins | The ESP8266 board is satellite B on the bus; A1 against B heats the board, the core quarantines and heals it, and the LEDs follow | Mayssam | Tue 13 |
+| **G7** Ship | Numbers regenerated and paper compiles with macros (Youssef); demo script, preflight, backup video recorded (Mayssam); `v1.0-final` tag (with OK) | both | Wed 14 |
 
 ---
 
 ## 4. Phases
 
-### Phase 0: Repo health (≈1 h) → G0
+### Phase 0: Repo health (≈1 h) → G0 · owner: Mayssam
 
 1. `git pull`. Read `README.md`, `docs/CONTEXT.md`, `docs/ML_GUIDE.md`, `docs/INTERFACE_PROPOSALS.md`, `Makefile`, `pyproject.toml`, `ml/schema.py`, `ml/online.py`, `ml/synthetic/engine.py` (the API part), and `eval/closed_loop.py`.
 2. Create `.venv` with Python 3.11 and run `make setup` then `make test`. Report anything that fails on 3.11 and fix it.
@@ -123,7 +130,7 @@
    - Tell the team that she's taking over all lanes. Youssef should not push to `ml/` or `eval/` this week without coordinating, to avoid conflicts.
 6. **Gate G0:** `make test` output plus the pinned file. Stop for approval.
 
-### Phase 1: Interface contract + bus (≈3 h) → G1
+### Phase 1: Interface contract + bus (≈3 h) → G1 · owner: Mayssam
 
 **1a. `docs/interfaces.md`**
 - Start from `docs/CONTEXT.md` §6 and apply decisions D2–D6, D8 and D9.
@@ -149,7 +156,7 @@
 
 **1b. `aurora_common/`** (package at the repo root, installed with `pip install -e .`)
 - `schemas.py`: pydantic v2 models for every message. Include `parse(topic, payload) -> Model` and `dump(model) -> bytes` (compact JSON).
-  - Reuse and move the label and episode models from `ml/schema.py`, then make `ml/schema.py` re-export them so nothing in `ml/` breaks.
+  - Define the label and episode models here, field-for-field compatible with `ml/schema.py` (a test checks this). `ml/` is Youssef's folder, so `ml/schema.py` is not edited; switching it to re-export from `aurora_common` is his call.
 - `topics.py`: builders and parsers (`tm(sat, sub)`, `tc(sat)`, `link(a, b)` with alphabetical ordering, …), plus `CORE_ALLOWED_SUBSCRIPTIONS` and `FORBIDDEN_FOR_CORE = ["aurora/v1/gt/#", "aurora/v1/redteam/#"]`.
 - `bus.py`: a thin paho-mqtt v2 wrapper with auto-reconnect, JSON helpers and `publish(model)`. It logs reconnects; it never silently drops QoS 1 messages.
 - `tests/test_schemas.py`: every example in `interfaces.md` validates; compact and spaced JSON both parse; a bad enum fails.
@@ -163,7 +170,7 @@
 
 **Gate G1:** run `make up`, publish a sample telemetry message with `bus.py`, show the `make tail` output and the green test run. Stop for approval.
 
-### Phase 2: Fix the ML lane (≈4–6 h, mostly pipeline runtime) → G2
+### Phase 2: Fix the ML lane (≈4–6 h, mostly pipeline runtime) → G2 · owner: Youssef
 
 Fix these on branch `p2-ml-fixes`. Every fix gets a regression test.
 
@@ -193,7 +200,7 @@ Fix these on branch `p2-ml-fixes`. Every fix gets a regression test.
 
 **Gate G2:** test output, `manifest.json` and a before/after table of headline numbers (old report vs re-run). Stop for approval.
 
-### Phase 3: Live twin + recorder (≈3 h) → G3
+### Phase 3: Live twin + recorder (≈3 h) → G3 · owner: Youssef
 
 **`twin/service.py`** (`python -m twin.service --sats A-L|D-L --speedup 1 --config twin/config.yaml`):
 - Wrap `ml.synthetic.engine.SyntheticTwin` in a **clean live scenario**: no internally scheduled attacks; all attacks come over the bus.
@@ -226,7 +233,7 @@ Fix these on branch `p2-ml-fixes`. Every fix gets a regression test.
 
 Stop for approval.
 
-### Phase 4: CASSANDRA core (≈6–8 h) → G4 (Lane 1 done)
+### Phase 4: CASSANDRA core (≈6–8 h) → G4 (Lane 1 done) · owner: Mayssam
 
 Package layout:
 
@@ -309,7 +316,7 @@ cassandra/
 
 **Gate G4 (Lane 1 done):** `make demo-sw`, then `make attack A1 TARGET=E`. Show the tail of `core/event` and the state sequence for E. Show the integration test green. Stop for approval.
 
-### Phase 5: Attacks over MQTT (≈2 h, can overlap Phase 4's end) → part of G5
+### Phase 5: Attacks over MQTT (≈2 h, can overlap Phase 4's end) → part of G5 · owner: Mayssam
 
 `attacks/run.py --scenario A1|B1|C1 --target E [--onset 10] [--duration 120] [--intensity 1.0] [--seed 0]`
 - Before sending anything, publish `gt/episode` (start) with `labels.json` keys. Publish `gt/event` (onset, stop) at each step. **Truth goes to `gt/` only.**
@@ -326,7 +333,7 @@ cassandra/
 - Faults F1–F5 and a clean run N go through the same script (`--scenario F1` … `N`), so benign runs can be recorded too.
 - `make attack A1 TARGET=E` wraps this.
 
-### Phase 6: Scenarios B and C in software (≈2 h) → part of G5
+### Phase 6: Scenarios B and C in software (≈2 h) → part of G5 · owner: Mayssam
 
 - Run each scenario three times with different seeds and targets while recording.
 - Pass criteria:
@@ -335,7 +342,7 @@ cassandra/
 - Score the recorded episodes with `eval` (S2 makes this possible). Commit only `results/live_manifest.json` with the per-run outcomes, not the episodes.
 - Tune `monitor` and `act` tolerances in config only, and log every change in `STATUS.md`.
 
-### Phase 7: Dashboard (≈4 h) → completes G5
+### Phase 7: Dashboard (≈4 h) → completes G5 · owner: Youssef
 
 `dashboard/`: NASA **Open MCT**, pinned exact version, served by `npm run start`.
 - **Telemetry plugin:** connect to `ws://localhost:9001` with `mqtt.js` (pinned) and map `aurora/v1/...` topics to Open MCT telemetry objects (one per satellite/subsystem/field). Historical data comes from an in-memory ring buffer (last 15 min) in the plugin. No database.
@@ -357,7 +364,7 @@ cassandra/
   - Take screenshots for `STATUS.md`.
   - Stop for approval.
 
-### Phase 8: Hardware joins: the ESP8266 board as satellite B (≈3 h) → G6
+### Phase 8: Hardware joins: the ESP8266 board as satellite B (≈3 h) → G6 · owner: Mayssam
 
 **8a. Import Phase 2 (`prototype/phase2-demo/`)**
 - Unzip `phase2_kit.zip`.
@@ -398,7 +405,7 @@ cassandra/
 
 **Gate G6:** a video or screenshots of 8c step 5 and the timing table. Stop for approval.
 
-### Phase 9: Numbers, paper, rehearsal, freeze (Wed 14) → G7
+### Phase 9: Numbers, paper, rehearsal, freeze (Wed 14) → G7 · owners: Youssef (numbers, paper), Mayssam (demo script, preflight, recording)
 
 1. `make evaluate figures numbers` from the fixed pipeline, and update `results/manifest.json`.
 2. **[HUMAN]** Ask Mayssam for the submitted Phase 2 paper `.tex` and figures. Put them in `docs/paper/CASSANDRA_paper_updated.tex` and `docs/paper/figs/`, then run `python -m eval.paper_numbers`.

@@ -1,12 +1,18 @@
 # AURORA. Run from WSL (Ubuntu). Every target uses the repo venv explicitly (CONTEXT Section 10.7).
+# Shared targets live here; each lane's targets live in mk/*.mk:
+#   mk/core.mk  bus, CASSANDRA core, attacks, demo   (Mayssam)
+#   mk/ml.mk    ML pipeline: generate, train, evaluate (Youssef)
+#   mk/twin.mk  live twin, recorder, dashboard        (Youssef, when it exists)
 #   make setup   -> .venv (Python 3.11) with the pinned set in requirements.lock
 #   make lock    -> regenerate requirements.lock from requirements-dev.txt (then re-run make setup)
+SHELL := /bin/bash
 VENV ?= .venv
 PY ?= $(VENV)/bin/python
 UV ?= $(HOME)/.local/bin/uv
 TORCH_INDEX = --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match
+LINT_DIRS = $(wildcard aurora_common cassandra attacks scripts ground hardware ml eval twin tests)
 
-.PHONY: setup lock data generate cache train evaluate closed-loop robustness stress export figures numbers test lint all
+.PHONY: setup lock test lint
 
 setup:           ## needs uv: curl -LsSf https://astral.sh/uv/install.sh | sh
 	UV_LINK_MODE=copy $(UV) venv --python 3.11 $(VENV)
@@ -15,44 +21,11 @@ setup:           ## needs uv: curl -LsSf https://astral.sh/uv/install.sh | sh
 lock:
 	$(UV) pip compile requirements-dev.txt --python-version 3.11 $(TORCH_INDEX) -o requirements.lock
 
-data:            ## CuCD-ID, OPS-SAT-AD and a SCAD subset into data/ (gitignored)
-	$(PY) -m eval.datasets.download all
-
-generate:        ## M1: synthetic episodes in the Section 6.3 format
-	$(PY) -m ml.synthetic.generate
-
-cache:
-	$(PY) -m ml.features
-
-train:           ## M2: 5-model ensemble + ablations (resumable)
-	$(PY) -m ml.train all --parallel 1
-
-evaluate:        ## M4: forecaster, ablations and baselines on every test split
-	$(PY) -m eval.harness run --workers 1
-
-closed-loop:
-	$(PY) -m eval.closed_loop --episodes 24
-
-robustness:
-	$(PY) -m eval.robustness --episodes 12
-
-stress:          ## cyber-evidence stress tests (origin spoofing, no telecommands)
-	$(PY) -m eval.stress
-
-export:          ## TorchScript + latency (run this one on the Raspberry Pi too)
-	$(PY) -m ml.export
-
-figures:
-	$(PY) -m eval.figures
-
-numbers:         ## results -> docs/paper, docs/technical_report, README
-	$(PY) -m eval.paper_numbers
-
 test:
 	$(PY) -m pytest
 
 lint:
-	$(PY) -m ruff check ml eval tests
-	$(PY) -m black --check ml eval tests
+	$(PY) -m ruff check $(LINT_DIRS)
+	$(PY) -m black --check $(LINT_DIRS)
 
-all: data generate cache train evaluate closed-loop robustness stress export figures numbers test
+include $(wildcard mk/*.mk)
