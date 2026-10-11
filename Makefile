@@ -1,10 +1,19 @@
-# AURORA ML side. Set PY to your interpreter (e.g. make PY=~/cassandra-demo/venv/bin/python3 all).
-PY ?= python3
+# AURORA. Run from WSL (Ubuntu). Every target uses the repo venv explicitly (CONTEXT Section 10.7).
+#   make setup   -> .venv (Python 3.11) with the pinned set in requirements.lock
+#   make lock    -> regenerate requirements.lock from requirements-dev.txt (then re-run make setup)
+VENV ?= .venv
+PY ?= $(VENV)/bin/python
+UV ?= $(HOME)/.local/bin/uv
+TORCH_INDEX = --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple --index-strategy unsafe-best-match
 
-.PHONY: setup data generate cache train evaluate closed-loop robustness stress export figures numbers test lint all
+.PHONY: setup lock data generate cache train evaluate closed-loop robustness stress export figures numbers test lint all
 
-setup:
-	$(PY) -m pip install -r requirements-dev.txt
+setup:           ## needs uv: curl -LsSf https://astral.sh/uv/install.sh | sh
+	UV_LINK_MODE=copy $(UV) venv --python 3.11 $(VENV)
+	UV_LINK_MODE=copy $(UV) pip sync --python $(PY) requirements.lock $(TORCH_INDEX)
+
+lock:
+	$(UV) pip compile requirements-dev.txt --python-version 3.11 $(TORCH_INDEX) -o requirements.lock
 
 data:            ## CuCD-ID, OPS-SAT-AD and a SCAD subset into data/ (gitignored)
 	$(PY) -m eval.datasets.download all

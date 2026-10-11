@@ -126,33 +126,10 @@ This is the only component with working, demonstrated results (see `docs/CONTEXT
 
 Datasets are **never committed**; download scripts fetch them into `data/` (gitignored). See `docs/CONTEXT.md` Section 5.6.
 
-## Team (INSAT, Tunis)
-
-| Name | Role |
-|---|---|
-| Mayssam Hergli | Lead — architecture, defence core, red team |
-| Youssef Mhamdi | TBD |
-| Rami Troudi | TBD |
-| Eya Jendoubi | TBD |
-| Youssef Atig | TBD |
 
 See `docs/CONTEXT.md` Section 8 for area ownership (most areas still TBD — to be filled in as the team divides Phase 3 work).
 
-## Roadmap (6 → 14 October 2026)
 
-| Day | Goals | Exit criterion |
-|---|---|---|
-| Tue 6 | Repo, README, skeleton, `docs/interfaces.md` frozen, parts ordered | Everyone can clone; interfaces reviewed by all owners |
-| Wed 7 | Twin v0; firmware v0; core ingest + graph skeleton; SCAD loader + threshold baseline | One physical node and one twin satellite visible on the bus |
-| Thu 8 | Twin v1 (12 satellites, orbits, ISL geometry, ADCS); episode generator + labels; forecaster v0 | 1 000+ labelled episodes generated |
-| Fri 9 | Sandbox + J(a) + safety gates; ESP-NOW links; dashboard v0 | Quarantine physically cuts a radio link |
-| Sat 10 | Forecaster v1 + calibration + ensemble; baselines; attack library on hardware | Model beats thresholds on lead time on held-out episodes |
-| Sun 11 | Full integration: 3 physical + 9 twin, end-to-end Scenarios A, B, C | Full loop runs live for 30 min without crash |
-| Mon 12 | Evaluation runs (twin, SCAD, ESA-ADB), Raspberry Pi latency, results into paper | Results folder + plots committed |
-| Tue 13 | Rehearsal, record backup demo, freeze `main` | Two clean rehearsals in a row |
-| Wed 14 | Buffer, submission | Submitted |
-
-Full plan, including paper milestones M1–M6, in `docs/CONTEXT.md` Section 9.
 
 ## Contributing
 
