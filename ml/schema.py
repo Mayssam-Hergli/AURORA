@@ -95,21 +95,22 @@ def forecast_message(
     sat: str,
     t: float,
     p_fail: dict[int, float],
-    p_std: dict[int, float],
-    next_sub: str,
-    p_malicious: float,
+    p_std: dict[int, float] | None,
+    next_sub: str | None,
+    p_malicious: float | None,
     model: str = "tgn-v1",
 ) -> dict:
-    """Payload for aurora/v1/core/forecast/{sat} (Section 6.2)."""
+    """Payload for aurora/v1/core/forecast/{sat} (interfaces.md 3.5). What a model does not compute
+    is null, never a made-up number (D4: p_std null with fewer than 2 models)."""
     return {
         "v": SCHEMA_VERSION,
         "sat": sat,
         "t": float(t),
         "model": model,
         "p_fail": {str(k): round(float(v), 4) for k, v in p_fail.items()},
-        "p_std": {str(k): round(float(v), 4) for k, v in p_std.items()},
+        "p_std": None if p_std is None else {str(k): round(float(v), 4) for k, v in p_std.items()},
         "next_sub": next_sub,
-        "p_malicious": round(float(p_malicious), 4),
+        "p_malicious": None if p_malicious is None else round(float(p_malicious), 4),
     }
 
 

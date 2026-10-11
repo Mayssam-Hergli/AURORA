@@ -38,3 +38,61 @@ def ece(p: np.ndarray, y: np.ndarray, n_bins: int = 10) -> float:
     conf, acc, cnt = reliability(p, y, n_bins)
     ok = cnt > 0
     return float(np.sum(cnt[ok] / cnt.sum() * np.abs(acc[ok] - conf[ok])))
+
+
+# ----------------------------------------------------------------------------- calibration.json (M5)
+def calibration_path():
+    from ml import config
+
+    return config.MODELS / "calibration.json"
+
+
+def write_calibration(temperature: float, tau: float | None, fpr_target: float, n_models: int, source: str):
+    """data/models/calibration.json, next to the models it calibrates (review fix M5)."""
+    import json
+    import subprocess
+    import time
+
+    from ml import config
+
+    try:
+        git = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=config.ROOT,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        git = ""
+    path = calibration_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old = json.loads(path.read_text()) if path.exists() else {}
+    data = {
+        "temperature": float(temperature),
+        "tau": None if tau is None else float(tau),
+        "fpr_target": float(fpr_target),
+        "n_models": int(n_models),
+        "git": git,
+        "source": source,
+        "written_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    if data["tau"] is None and old.get("tau") is not None and source != "ml.train":
+        data["tau"] = old["tau"]
+    path.write_text(json.dumps(data, indent=1))
+    return data
+
+
+def read_calibration(required: bool = True) -> dict | None:
+    """The calibration of the models in data/models. Missing and required: a clear error (M5)."""
+    import json
+
+    path = calibration_path()
+    if not path.exists():
+        if required:
+            raise FileNotFoundError(
+                f"{path} is missing: the models would run uncalibrated. Run `make train` (writes the "
+                "temperature) and `make evaluate` (adds tau), or pass allow_uncalibrated=True."
+            )
+        return None
+    return json.loads(path.read_text())

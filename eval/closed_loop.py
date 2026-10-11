@@ -47,13 +47,12 @@ def apply_action(twin: SyntheticTwin, sat: str, action: str, t: int):
             and r["t"] >= twin.t0_unix + (t - 120) * twin.dt
         }
         for o in recent:
-            twin.block_source(s, o)
-        twin.queue = [(k, m) for k, m in twin.queue if not (m["sat"] == sat and m["origin"] in recent)]
+            twin.block_source(s, o)  # later commands from these origins are rejected when they arrive
     elif action == "isolate_subsystem":
         twin.isolate_heater(s)
         core("SET_MODE", {"mode": "IDLE"})
     elif action == "quarantine_reroute":
-        core("SET_MODE", {"mode": "QUARANTINED"})
+        core("SAFE_MODE")  # QUARANTINED is a core state, not a commandable mode (D3)
         for peer in twin.sats:
             if peer != sat:
                 core("ISL_ENABLE", {"peer": peer, "on": False})
@@ -86,13 +85,16 @@ def in_service(twin) -> float:
 
 def plan(twin, fc, sat, t, rc, quarantines_this_orbit, n_sats):
     t0 = time.perf_counter()
-    snap = twin.snapshot()
+    snap = twin.snapshot()  # the real twin, restored after planning
+    # M2: candidates are rolled out from a copy without queued or planned future commands, so the
+    # planner never sees the attacker's next moves; the last observed effects persist
+    plan_base = twin.snapshot(include_queue=False)
     fc_state = (copy.deepcopy(fc.frames), copy.deepcopy(fc.buffer))
     budget_ok = (quarantines_this_orbit + 1) / n_sats <= rc["isolation_budget"] + 1e-9
     cands = [a for a in ACTIONS if a != "quarantine_reroute" or budget_ok]
     table = []
     for a in cands:
-        twin.restore(snap)
+        twin.restore(plan_base)
         fc.frames, fc.buffer = copy.deepcopy(fc_state[0]), copy.deepcopy(fc_state[1])
         apply_action(twin, sat, a, t)
         k = t
@@ -104,16 +106,23 @@ def plan(twin, fc, sat, t, rc, quarantines_this_orbit, n_sats):
             feed(fc, twin, k)
             fc.push_frame()
         last = fc.forecast(twin.t0_unix + k * twin.dt)  # Section 6.2: Unix time
-        R = max(f["p_fail"]["60"] for f in last)
-        Q = next(f["p_std"]["60"] for f in last if f["sat"] == sat)
+        # R = expected number of satellites reaching F (sum of risks), as in the CASSANDRA core
+        R = float(sum(f["p_fail"]["60"] for f in last))
+        mine = next(f for f in last if f["sat"] == sat)
+        Q = mine["p_std"]["60"] if mine.get("p_std") else None  # D4: no Q from a single model
         U = in_service(twin)
         w = rc["weights"]
-        J = w["w_r"] * R + w["w_m"] * (1 - U) + w["w_c"] * rc["cost"][a] + w["w_q"] * Q
+        J = (
+            w["w_r"] * R
+            + w["w_m"] * (1 - U)
+            + w["w_c"] * rc["cost"][a]
+            + (w["w_q"] * Q if Q is not None else 0.0)
+        )
         table.append(dict(action=a, R=R, U=U, Q=Q, J=J))
     twin.restore(snap)
     fc.frames, fc.buffer = fc_state
     best = min(table, key=lambda r: r["J"])
-    best["gated"] = best["Q"] > rc["theta_uncert"]
+    best["gated"] = None if best["Q"] is None else best["Q"] > rc["theta_uncert"]
     return best, table, (time.perf_counter() - t0) * 1000
 
 

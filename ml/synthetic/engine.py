@@ -348,11 +348,68 @@ class SyntheticTwin:
             tr["reported_masked"] = [sp.channel]
 
     # ================================================================== sandbox API
-    def snapshot(self):
-        return copy.deepcopy(self.__dict__)
+    def snapshot(self, include_queue: bool = True):
+        """Full state copy. include_queue=False (review finding M2): the copy keeps the physical and
+        OBC state but none of the future: no queued commands and no planned Scenario C propagation.
+        A planner must use this, so that it never sees the attacker's future commands."""
+        snap = copy.deepcopy(self.__dict__)
+        if not include_queue:
+            snap["queue"] = []
+            snap["c1"] = None
+        return snap
 
     def restore(self, snap):
         self.__dict__.update(copy.deepcopy(snap))
+
+    def seed_from_observation(self, obs: dict) -> None:
+        """Set the state from what a defender observed (the core's sandbox shadow, M2).
+
+        obs = {"t": float,
+               "sats": {sat: {"temp_c", "heater_on", "soc_pct", "mode", "eclipse", "ground_contact",
+                              "temp_rate_c_s" (optional)}},
+               "links": {"A-B": {"feasible": bool, "enabled": bool}}}
+        A heater observed ON stays latched at full power (its drive shape is unknown to the defender);
+        its power is inferred from the observed heating rate when given. Geometry over the following
+        rollout is held at the observed eclipse, contact and link feasibility. Ground truth is reset:
+        nothing about the scenario is known."""
+        th = self.cfg["thermal"]
+        for s, sat in enumerate(self.sats):
+            o = obs.get("sats", {}).get(sat)
+            if not o:
+                continue
+            if o.get("temp_c") is not None:
+                self.temp[s] = o["temp_c"]
+            if o.get("soc_pct") is not None:
+                self.soc[s] = o["soc_pct"] / 100.0
+            on = bool(o.get("heater_on", 0))
+            self.heater_cmd[s] = on
+            self.heater_attack[s] = -1
+            self.heater_stuck[s] = False
+            self.science[s] = False
+            self.thermostat[s] = False
+            self.mode[s] = MODE_SAFE if o.get("mode") in ("SAFE", "QUARANTINED") else MODE_NOMINAL
+            rate = o.get("temp_rate_c_s")
+            if on and rate is not None and o.get("temp_c") is not None:
+                ecl = float(o.get("eclipse", 0))
+                p = (
+                    th["heat_capacity_j_per_k"] * rate
+                    - th["p_sun_absorbed_w"] * (1 - ecl)
+                    - th["p_internal_w"]
+                    + th["conductance_w_per_k"] * (o["temp_c"] - th["t_env_c"])
+                )
+                self.heater_power[s] = float(np.clip(p, 0.0, 200.0))
+            if "eclipse" in o:
+                self.geo.eclipse[:, s] = bool(o["eclipse"])
+            if "ground_contact" in o:
+                self.geo.contact[:, s] = bool(o["ground_contact"])
+        for key, lk in obs.get("links", {}).items():
+            a, b = key.split("-")
+            i, j = self.idx[a], self.idx[b]
+            self.geo.feasible[:, i, j] = self.geo.feasible[:, j, i] = bool(lk["feasible"])
+            self.isl_enabled[i, j] = self.isl_enabled[j, i] = bool(lk["enabled"])
+        self.queue, self.commands, self.c1 = [], [], None
+        self.truth = {s: {} for s in self.sats}
+        self.t = 0
 
     def apply(self, msg: dict):
         """Deliver a telecommand now (Section 6.2 message; origin decides trust)."""
@@ -368,7 +425,7 @@ class SyntheticTwin:
         t = self.t
         kind = schema.origin_kind(msg["origin"])
         accepted = bool(msg["_auth_ok"])
-        if self.mode[s] in (MODE_SAFE, MODE_QUARANTINED) and kind not in ("ground", "core"):
+        if self.mode[s] in (MODE_SAFE, MODE_QUARANTINED) and self._refused_in_safe(kind, msg):
             accepted = False
         if getattr(self, "blocked", {}).get(s, set()) and msg["origin"] in self.blocked[s]:
             accepted = False
@@ -415,17 +472,28 @@ class SyntheticTwin:
             if peer in self.idx:
                 self.isl_enabled[s, self.idx[peer]] = bool(args.get("on", True))
 
+    @staticmethod
+    def _refused_in_safe(kind: str, msg: dict) -> bool:
+        """docs/interfaces.md 3.2 (SAFE semantics): in SAFE a satellite refuses commands from origins
+        other than ground/core, HEATER on from any origin (load shedding) and SET_MODE other than
+        NOMINAL/SAFE; only SET_MODE NOMINAL exits SAFE. Decided from the command alone: the satellite
+        cannot know which commands are malicious (review finding M1)."""
+        if kind not in ("ground", "core"):
+            return True
+        args = msg.get("args") or {}
+        if msg["cmd"] == "HEATER":
+            return bool(args.get("on"))
+        if msg["cmd"] == "SET_MODE":
+            return args.get("mode") not in ("NOMINAL", "SAFE")
+        return False
+
     def _safe_mode(self, s):
-        """Safe mode: heater off, minimal loads, ignore non-ground commands (CONTEXT 5.1)."""
+        """Safe mode: heater off, minimal loads (CONTEXT 5.1). Queued commands stay queued; when they
+        arrive, the SAFE rule of _refused_in_safe decides (M1: no inspection of hidden flags)."""
         self.mode[s] = MODE_SAFE
         self.heater_cmd[s] = False
         self.science[s] = False
         self.heater_attack[s] = self.wheel_attack[s] = self.drain_attack[s] = -1
-        self.queue = [
-            (k, m)
-            for k, m in self.queue
-            if not (m["sat"] == self.sats[s] and m["_malicious"] and schema.origin_kind(m["origin"]) != "isl")
-        ]
 
     def isolate_heater(self, s):
         """Core action 'isolate subsystem': cut the heater power rail (also stops a stuck heater)."""
@@ -788,7 +856,8 @@ class SyntheticTwin:
         sp, T, S = self.spec, self.T, self.S
         tick_t = self.t0_unix + np.arange(T) * self.dt
         frames = []
-        base = pd.DataFrame({"t": np.repeat(tick_t, S), "sat": np.tile(self.sats, T), "src": "twin"})
+        # offline episodes are synthetic data, never to be confused with the live twin (S10, D9)
+        base = pd.DataFrame({"t": np.repeat(tick_t, S), "sat": np.tile(self.sats, T), "src": "synthetic"})
         seq = (self.seq0[None, :] + np.arange(T)[:, None]).reshape(-1)
         R = self.rep.reshape(T * S, -1)
         cols = {c: R[:, i] for i, c in enumerate(NOISY)}
@@ -854,7 +923,7 @@ class SyntheticTwin:
         commands = pd.DataFrame(
             self.commands, columns=["v", "id", "t", "sat", "origin", "cmd", "args", "accepted"]
         )
-        commands["src"] = "twin"
+        commands["src"] = "synthetic"
         a, b = np.triu_indices(S, 1)
         links = pd.DataFrame(
             {

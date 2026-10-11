@@ -110,25 +110,42 @@ class FrameBuilder:
 
 
 class OnlineForecaster:
-    def __init__(self, models: list, satellites: list[str], temperature: float = 1.0, window: int = 30):
+    def __init__(
+        self,
+        models: list,
+        satellites: list[str],
+        temperature: float = 1.0,
+        window: int = 30,
+        model_name: str = "tgn-v1",
+    ):
         self.models = models
         self.temperature = temperature
+        self.model_name = model_name
         self.window = window
         self.frames = FrameBuilder(satellites)
         self.buffer: deque = deque(maxlen=window)
         self.sats = list(satellites)
 
     @classmethod
-    def from_models(cls, names: list[str] | None = None):
+    def from_models(cls, names: list[str] | None = None, allow_uncalibrated: bool = False):
+        """Load the ensemble and its calibration (data/models/calibration.json, M5). Without the
+        calibration file this raises, unless allow_uncalibrated=True: then it logs a WARNING and every
+        forecast says model "tgn-v1-uncalibrated"."""
+        import logging
+
+        from ml.calibration import read_calibration
         from ml.train import load_model
 
         names = names or sorted(p.stem for p in config.MODELS.glob("full_s*.pt"))
+        cal = read_calibration(required=not allow_uncalibrated)
+        name = "tgn-v1"
+        if cal is None:
+            logging.getLogger("ml.online").warning("no calibration.json: running UNCALIBRATED (T = 1)")
+            name = "tgn-v1-uncalibrated"
         models = [load_model(n) for n in names]
-        temp = 1.0
-        metrics = config.RESULTS / "eval" / "metrics.json"
-        if metrics.exists():
-            temp = json.loads(metrics.read_text()).get("temperature", 1.0)
-        return cls(models, config.load("synthetic")["satellites"], temp, config.load("model")["window_s"])
+        temp = 1.0 if cal is None else float(cal["temperature"])
+        sats = config.load("synthetic")["satellites"]
+        return cls(models, sats, temp, config.load("model")["window_s"], model_name=name)
 
     on_telemetry = property(lambda self: self.frames.on_telemetry)
     on_command = property(lambda self: self.frames.on_command)
@@ -151,6 +168,14 @@ class OnlineForecaster:
 
     @torch.no_grad()
     def forecast(self, t: float) -> list[dict]:
+        if not self.buffer:  # S4: before the first tick there is no data yet
+            out = []
+            for s in self.sats:
+                msg = schema.forecast_message(s, t, {h: 0.0 for h in HORIZONS}, None, None, None)
+                msg["model"] = self.model_name if self.models else "trajectory-v0"
+                msg["warming_up"] = True
+                out.append(msg)
+            return out
         raw, lk = self.window_tensor(), torch.tensor(self._links[None])
         if not self.models:
             return self._fallback(t)
@@ -158,7 +183,7 @@ class OnlineForecaster:
         bins = torch.stack([o["bin_logits"][0] for o in outs]) / self.temperature  # [K, S, 4]
         p_members = 1 - torch.cumprod(1 - torch.sigmoid(bins), -1)
         p = 1 - torch.cumprod(1 - torch.sigmoid(bins.mean(0)), -1)
-        q = p_members.std(0) if len(self.models) > 1 else torch.zeros_like(p)
+        q = p_members.std(0) if len(self.models) > 1 else None  # D4: no Q from one model
         nxt = torch.softmax(torch.stack([o["next_logits"][0] for o in outs]).mean(0), -1)
         mal = torch.sigmoid(torch.stack([o["mal_logit"][0] for o in outs]).mean(0))
         return [
@@ -166,9 +191,10 @@ class OnlineForecaster:
                 s,
                 t,
                 dict(zip(HORIZONS, p[i].tolist())),
-                dict(zip(HORIZONS, q[i].tolist())),
+                None if q is None else dict(zip(HORIZONS, q[i].tolist())),
                 G.SUBSYSTEM_TYPES[int(nxt[i].argmax())],
                 float(mal[i]),
+                model=self.model_name,
             )
             for i, s in enumerate(self.sats)
         ]
@@ -183,7 +209,8 @@ class OnlineForecaster:
             p = {
                 h: float(trajectory_score(raw[:, :, i : i + 1], crit, horizon=h)[0, -1, 0]) for h in HORIZONS
             }
-            msg = schema.forecast_message(s, t, p, {h: 0.0 for h in HORIZONS}, "thermal", 0.0)
+            # the trajectory forecaster computes no uncertainty, subsystem or maliciousness: null
+            msg = schema.forecast_message(s, t, p, None, None, None)
             msg["model"] = "trajectory-v0"
             out.append(msg)
         return out

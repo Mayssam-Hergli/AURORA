@@ -17,7 +17,7 @@ Ground truth (`labels.json`, `ml_labels.json`, `aurora/v1/gt/...`) is read only 
 
 | Topic | Fields used | Per-second channel(s) in [`ml/graph.py`](../ml/graph.py) |
 |---|---|---|
-| `aurora/v1/sat/{id}/tm` | `temp_c`, `heater_on`, `soc_pct`, `bus_v`, `load_w`, `solar_w`, `current_ma`, `att_err_deg`, `wheel_rpm[3]`, `rate_dps`, `mode`, `cmd_ok`, `cmd_rej`, `rssi_dbm`, `sun_level`, `eclipse` | THERMAL, EPS, ADCS, OBC, COMMS, SUN channels |
+| `aurora/v1/sat/{id}/tm/{sub}` | `temp_c`, `heater_on`, `soc_pct`, `bus_v`, `load_w`, `solar_w`, `current_ma`, `att_err_deg`, `wheel_rpm[3]`, `rate_dps`, `mode`, `cmd_ok`, `cmd_rej`, `rssi_dbm`, `level`, `eclipse` | THERMAL, EPS, ADCS, OBC, COMMS, SUN channels |
 | `aurora/v1/sat/{id}/tc` | `cmd`, `origin` (`ground`, `isl:X`, `unknown`) | `tc_ground`, `tc_isl`, `tc_unknown`, `tc_heater_on`, `tc_set_mode`, `tc_ping` on OBC |
 | `aurora/v1/link/...` | per-pair link up/down | E_ISL(t) mask (66 pairs for 12 satellites) and `n_isl_peers` |
 
@@ -31,10 +31,10 @@ Ground truth (`labels.json`, `ml_labels.json`, `aurora/v1/gt/...`) is read only 
 {"v": 1, "sat": "B", "t": 1760000123.0, "model": "tgn-v1",
  "p_fail": {"10": 0.02, "30": 0.11, "60": 0.43, "120": 0.71},
  "p_std":  {"10": 0.01, "30": 0.03, "60": 0.06, "120": 0.05},
- "next_sub": "EPS", "p_malicious": 0.93}
+ "next_sub": "eps", "p_malicious": 0.93}
 ```
 
-`p_fail` is calibrated and monotone in the horizon. `p_std` is the ensemble standard deviation, the Q of the uncertainty gate.
+`p_fail` is calibrated (temperature from `data/models/calibration.json`, M5) and monotone in the horizon. `p_std` is the ensemble standard deviation, the Q of the uncertainty gate; it is `null` with fewer than 2 models (D4), and the trajectory fallback sends `null` for `p_std`, `next_sub` and `p_malicious`.
 
 ### 1.3 Episodes (Section 6.3) and the ML extension
 

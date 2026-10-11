@@ -18,10 +18,8 @@ links; a satellite in SAFE refuses them (interfaces.md 3.2).
 Hardware satellites: the ESP8266 firmware's own thermal model (+1.5 C/s heating, 3 % per 100 ms
 cooling towards 25 C).
 
-Engine hooks. The shadow needs SyntheticTwin.snapshot(include_queue=False) and
-SyntheticTwin.seed_from_observation(obs). They belong to ml/synthetic/engine.py (Youssef). Until they
-exist, EngineAdapter provides stand-ins with the same signatures, and switches to the real methods as
-soon as the engine has them, with no change to the core.
+Engine hooks: SyntheticTwin.snapshot(include_queue=False) and SyntheticTwin.seed_from_observation(obs)
+in ml/synthetic/engine.py (added with the M2 fix; the stand-ins that lived here are gone).
 
 Closed-loop numbers from this sandbox are an upper bound: it uses the simulator as its model.
 """
@@ -138,36 +136,30 @@ def refused_in_safe(mode_safe: bool, origin: str, cmd: str, args: dict) -> bool:
 
 # ----------------------------------------------------------------------------- engine hooks
 class EngineAdapter:
-    """snapshot(include_queue=False) and seed_from_observation(obs) on a SyntheticTwin, using the
-    engine's own methods when present (Youssef, Phase 2) and the stand-ins below otherwise.
-
-    obs = {"t": float,
-           "sats": {sat: {"temp_c", "heater_on", "soc_pct", "mode", "eclipse", "ground_contact",
-                          "temp_rate_c_s"(optional)}},
-           "links": {"A-B": {"feasible": bool, "enabled": bool}}}
-    """
+    """The shadow twin, built with the engine's own hooks (ml/synthetic/engine.py):
+    SyntheticTwin.seed_from_observation(obs) then snapshot(include_queue=False) / restore(), so the
+    planner starts from observations with no queued or planned future command (M2)."""
 
     def __init__(self, seed: int = 0, duration_s: int = 120):
         self.base = _clean_twin(seed, max(120, duration_s))
         snap = getattr(type(self.base), "snapshot", None)
-        self.native = hasattr(type(self.base), "seed_from_observation") and (
-            snap is not None and "include_queue" in inspect.signature(snap).parameters
-        )
+        if not (
+            hasattr(type(self.base), "seed_from_observation")
+            and snap is not None
+            and "include_queue" in inspect.signature(snap).parameters
+        ):
+            raise RuntimeError("ml/synthetic/engine.py lacks seed_from_observation / snapshot(include_queue)")
 
     def shadow(self, obs: dict):
         """A fresh shadow twin seeded from observations, with no queued commands."""
         tw = copy.deepcopy(self.base)
-        if self.native:
-            tw.seed_from_observation(obs)
-            tw.restore(tw.snapshot(include_queue=False))
-        else:
-            _seed_from_observation(tw, obs)
-            _drop_queue(tw)
+        tw.seed_from_observation(obs)
+        tw.restore(tw.snapshot(include_queue=False))
         return tw
 
     @property
     def kind(self) -> str:
-        return "engine" if self.native else "stand-in"
+        return "engine"
 
 
 def _clean_twin(seed: int, duration_s: int):
@@ -182,58 +174,6 @@ def _clean_twin(seed: int, duration_s: int):
     spec.type, spec.target, spec.onset_s, spec.channel, spec.n_victims = "N", None, None, None, 0
     spec.episode_id = f"shadow-{seed}"
     return SyntheticTwin(cfg, spec)
-
-
-def _drop_queue(tw) -> None:
-    """Stand-in for snapshot(include_queue=False): no planned or attacker command survives."""
-    tw.queue = []
-    tw.commands = []
-
-
-def _seed_from_observation(tw, obs: dict) -> None:
-    """Stand-in for SyntheticTwin.seed_from_observation: set the physical and OBC state from what the
-    core observed. Geometry over the rollout is held at the observed eclipse, contact and link
-    feasibility (persistence over 30-60 s)."""
-    from ml.synthetic.engine import MODE_NOMINAL, MODE_SAFE
-
-    th = tw.cfg["thermal"]
-    sats = obs["sats"]
-    for s, sat in enumerate(tw.sats):
-        o = sats.get(sat)
-        if not o:
-            continue
-        if o.get("temp_c") is not None:
-            tw.temp[s] = o["temp_c"]
-        if o.get("soc_pct") is not None:
-            tw.soc[s] = o["soc_pct"] / 100.0
-        on = bool(o.get("heater_on", 0))
-        tw.heater_cmd[s] = on
-        tw.heater_attack[s] = -1  # full power while latched (drive shape unknown to the defender)
-        tw.heater_stuck[s] = False
-        tw.science[s] = False
-        tw.thermostat[s] = False
-        tw.mode[s] = MODE_SAFE if o.get("mode") in ("SAFE", "QUARANTINED") else MODE_NOMINAL
-        rate = o.get("temp_rate_c_s")
-        if on and rate is not None and o.get("temp_c") is not None:
-            # heater power that explains the observed heating rate (thermal model of interfaces 5.3)
-            ecl = float(o.get("eclipse", 0))
-            p = (
-                th["heat_capacity_j_per_k"] * rate
-                - th["p_sun_absorbed_w"] * (1 - ecl)
-                - th["p_internal_w"]
-                + th["conductance_w_per_k"] * (o["temp_c"] - th["t_env_c"])
-            )
-            tw.heater_power[s] = float(np.clip(p, 0.0, 200.0))
-        if "eclipse" in o:
-            tw.geo.eclipse[:, s] = bool(o["eclipse"])
-        if "ground_contact" in o:
-            tw.geo.contact[:, s] = bool(o["ground_contact"])
-    for key, lk in obs.get("links", {}).items():
-        a, b = key.split("-")
-        i, j = tw.idx[a], tw.idx[b]
-        tw.geo.feasible[:, i, j] = tw.geo.feasible[:, j, i] = bool(lk["feasible"])
-        tw.isl_enabled[i, j] = tw.isl_enabled[j, i] = bool(lk["enabled"])
-    tw.t = 0
 
 
 # ----------------------------------------------------------------------------- sandbox

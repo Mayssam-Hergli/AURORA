@@ -105,6 +105,7 @@ def train_job(variant: str, seed: int):
     rng = np.random.default_rng(seed)
     vitems = val_items(cv, mc["val_windows_per_episode"])
     name = f"{variant}_s{seed}"
+    (config.RESULTS / "logs").mkdir(parents=True, exist_ok=True)  # S3: also for a single `job`
     log = open(config.RESULTS / "logs" / f"train_{name}.log", "w")
     best, best_state, bad, hist = np.inf, None, 0, []
     for ep in range(mc["epochs"]):
@@ -171,6 +172,26 @@ def train_all(parallel: int):
         time.sleep(5)
         running = [p for p in running if p.poll() is None]
     print("all models trained")
+    calibrate()
+
+
+def calibrate() -> dict:
+    """M5: fit the temperature of the ensemble on validation windows and save calibration.json next
+    to the models (tau is added by eval.harness once the validation predictions exist)."""
+    from ml.calibration import fit_temperature, write_calibration
+
+    mc = config.load("model")
+    names = sorted(p.stem for p in config.MODELS.glob("full_s*.pt"))
+    if not names:
+        raise FileNotFoundError(f"no full_s*.pt models in {config.MODELS}")
+    cv, _ = features.load_cache("val")
+    b = make_batch(cv, val_items(cv, mc["val_windows_per_episode"]), mc["window_s"])
+    with torch.no_grad():
+        logits = np.mean([load_model(n)(b["raw"], b["links"])["bin_logits"].numpy() for n in names], 0)
+    temp = fit_temperature(logits, b["y"].numpy(), b["m"].numpy())
+    data = write_calibration(temp, None, config.load("eval")["target_fpr"], len(names), "ml.train")
+    print(f"calibration.json: temperature {temp:.3f} on {len(names)} models (tau added by make evaluate)")
+    return data
 
 
 def load_model(name: str):
@@ -184,6 +205,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("understanding")
+    sub.add_parser("calibrate")
     j = sub.add_parser("job")
     j.add_argument("variant", choices=VARIANTS)
     j.add_argument("seed", type=int)
@@ -192,6 +214,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "understanding":
         fit_understanding()
+    elif a.cmd == "calibrate":
+        calibrate()
     elif a.cmd == "job":
         train_job(a.variant, a.seed)
     else:

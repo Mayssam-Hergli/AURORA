@@ -35,16 +35,10 @@ def model_names():
 
 # ----------------------------------------------------------------------------- forecaster predictions
 def eval_ticks(c: dict, e: int, T: int, stride: int, coarse: int = 6) -> np.ndarray:
-    """Ticks at which a model is evaluated: every `coarse` s everywhere (an unbiased sample for
-    false-positive rates) and every `stride` s from the first anomaly onset to the last failure,
-    where lead time is measured. Ground truth only schedules the measurement, never the inputs."""
-    ticks = set(range(0, T, coarse))
-    on, cr = c["onset"][e], c["crit"][e]
-    if (on >= 0).any():
-        lo = max(0, int(on[on >= 0].min()) - 10)
-        hi = int(cr[cr >= 0].max()) + 1 if (cr >= 0).any() else T
-        ticks |= set(range(lo - lo % stride, min(hi, T), stride))
-    return np.array(sorted(ticks))
+    """Ticks at which a model is evaluated: every `stride` s, the same for every episode and every
+    method (review fix S1: the schedule no longer depends on ground truth). Scores are forward-filled
+    between ticks, so the lead-time error is at most stride - 1 s. `coarse` is kept for compatibility."""
+    return np.arange(0, T, stride)
 
 
 @torch.no_grad()
@@ -149,7 +143,7 @@ def run(workers: int):
         if not (OUT / f"pred_baselines_{split}.npz").exists():
             jobs.append(["baselines", split])
         for name in model_names():
-            if name.startswith("full") or split in ("val", "test_id", "test_real"):
+            if name.startswith("full") or split in ("val", "test_id", "test_ood", "test_real"):  # S9
                 if not (OUT / f"pred_{name}_{split}.npz").exists():
                     jobs.append(["predict", name, split])
     # baselines first: they also train the sequence baselines once
@@ -251,6 +245,7 @@ def compute_metrics():
                 **M.lead_summary(rows),
                 **M.bootstrap(rows, ev["bootstrap"]),
                 episode=M.episode_pr(s, c, kinds, taus[k]),
+                pre_onset=M.pre_onset_alarms(s, c, kinds, taus[k]),  # M3
                 **_ranking(s, sample),
             )
             if k == "ensemble":
@@ -268,8 +263,18 @@ def compute_metrics():
         print(f"{split}: done", flush=True)
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "metrics.json").write_text(json.dumps(results, indent=1, default=float))
+    _write_calibration(temp, taus.get("ensemble"), ev["target_fpr"], len(ens_names))
     write_markdown(results)
     return results
+
+
+def _write_calibration(temp: float, tau: float | None, fpr: float, n_models: int) -> None:
+    """M5: the calibration lives next to the models (data/models/calibration.json), so the online
+    forecaster never runs uncalibrated by accident. train writes T; evaluation refits T on the same
+    validation windows and adds tau (0.1 % FPR on validation benign ticks, primary horizon)."""
+    from ml.calibration import write_calibration
+
+    write_calibration(temperature=temp, tau=tau, fpr_target=fpr, n_models=n_models, source="eval.harness")
 
 
 def _ranking_sample(c, h_idx, every=5):

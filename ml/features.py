@@ -23,10 +23,23 @@ MAX_LAG = 15
 
 # ----------------------------------------------------------------------------- episode -> arrays
 def episode_arrays(path) -> dict:
-    ep = schema.read_episode(path)
-    tel, cmds, links, ml = ep["telemetry"], ep["commands"], ep["links"], ep["ml_labels"]
-    sats = ep["labels"].satellites
-    S, T, dt, t0 = len(sats), ml.n_ticks, ml.dt_s, ml.t0
+    """Arrays of one episode. Label files are optional (S2): without them (a recorder or hardware
+    episode) the time base and satellite list come from the telemetry, and the truth arrays are empty."""
+    from pathlib import Path
+
+    labelled = (Path(path) / "labels.json").exists() and (Path(path) / "ml_labels.json").exists()
+    ep = schema.read_episode(path, with_labels=labelled)
+    tel, cmds, links = ep["telemetry"], ep["commands"], ep["links"]
+    if labelled:
+        ml = ep["ml_labels"]
+        sats = ep["labels"].satellites
+        S, T, dt, t0 = len(sats), ml.n_ticks, ml.dt_s, ml.t0
+    else:
+        ml = None
+        sats = sorted(tel.sat.unique())
+        dt = 1.0
+        t0 = float(tel.t.min())
+        S, T = len(sats), int(round((float(tel.t.max()) - t0) / dt)) + 1
     sidx = {s: i for i, s in enumerate(sats)}
     raw = np.zeros((T, S, len(graph.FLAT)), np.float32)
     tel = tel.assign(tick=np.rint((tel.t - t0) / dt).astype(int), si=tel.sat.map(sidx))
@@ -65,7 +78,7 @@ def episode_arrays(path) -> dict:
             tick=np.clip(np.rint((cmds.t - t0) / dt).astype(int), 0, T - 1), si=cmds.sat.map(sidx)
         )
         kind = c.origin.map(schema.origin_kind)
-        args_on = c.args.astype(str).str.contains('"on": true')
+        args_on = c.args.map(_heater_on)  # M4: parse the JSON, never match its spelling
         for name, m in (
             ("tc_ground", kind == "ground"),
             ("tc_isl", kind == "isl"),
@@ -84,7 +97,24 @@ def episode_arrays(path) -> dict:
         tick=np.rint((links.t - t0) / dt).astype(int), k=[pidx[(a, b)] for a, b in zip(links.a, links.b)]
     )
     lk[li.tick.to_numpy(), li.k.to_numpy()] = li.enabled.to_numpy(bool)
-    return dict(raw=raw, links=lk, **truth_arrays(ml, sats))
+    truth = truth_arrays(ml, sats) if ml is not None else empty_truth(len(sats))
+    return dict(raw=raw, links=lk, **truth)
+
+
+def _heater_on(args) -> bool:
+    """True for HEATER args {"on": true}, whether stored as a dict, compact or spaced JSON."""
+    if isinstance(args, str):
+        try:
+            args = json.loads(args) if args.strip() else {}
+        except ValueError:
+            return False
+    return isinstance(args, dict) and args.get("on") is True
+
+
+def empty_truth(S: int) -> dict:
+    return dict(
+        crit=np.full(S, -1), onset=np.full(S, -1), malicious=np.full(S, -1), affected=np.full((S, 6), 10**6)
+    )
 
 
 def _ffill(g):
