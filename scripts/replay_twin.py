@@ -10,6 +10,11 @@ bus (attacks/) and the core's responses both act on the simulated physics.
     python scripts/replay_twin.py --sats A,C-L         # leave B to the hardware bridge
     python scripts/replay_twin.py --speed 20 --duration 600   # fast-forward for tests
 
+SAFE semantics (docs/interfaces.md 3.2): while a satellite is in SAFE, this plant refuses HEATER on
+from any origin and SET_MODE other than NOMINAL/SAFE, for bus commands and the engine's own
+scheduled traffic alike; only SET_MODE NOMINAL exits SAFE. It never looks at whether a command is
+malicious.
+
 Honesty: everything published here is simulated (src "twin"). It is not the Phase 3 live twin:
 no red-team effects (redteam/{id}) yet, and the engine's offline modelling choices apply.
 Timestamps are message time: t = start + tick, so --speed > 1 runs the whole system fast-forward
@@ -35,7 +40,7 @@ from aurora_common import schemas as S  # noqa: E402
 from aurora_common import topics as T  # noqa: E402
 from aurora_common.bus import Bus  # noqa: E402
 from ml import config as ml_config  # noqa: E402
-from ml.synthetic.engine import SyntheticTwin  # noqa: E402
+from ml.synthetic.engine import MODE_SAFE, SyntheticTwin  # noqa: E402
 from ml.synthetic.scenarios import sample_spec  # noqa: E402
 
 log = logging.getLogger("replay_twin")
@@ -122,12 +127,34 @@ class ReplayTwin:
             if S.args_problems(msg.cmd, msg.args):
                 self.stats["rejected_args"] += 1
                 cmd["_auth_ok"] = False  # a malformed command is rejected on board (cmd_rej rises)
+            elif self.refused_in_safe(msg.sat, msg.cmd, msg.args):
+                self.stats["refused_in_safe"] = self.stats.get("refused_in_safe", 0) + 1
+                cmd["_auth_ok"] = False
             self.twin.apply(cmd)
             self.stats["applied"] += 1
             log.info("applied %s %s %s from %s", msg.sat, msg.cmd, msg.args, msg.origin)
 
+    def refused_in_safe(self, sat: str, cmd: str, args: dict) -> bool:
+        """interfaces.md 3.2: in SAFE, HEATER on (any origin) and SET_MODE other than NOMINAL/SAFE are
+        refused. Decided from the command and the OBC mode only, never from who sent it."""
+        if self.twin.mode[self.twin.idx[sat]] != MODE_SAFE:
+            return False
+        if cmd == "HEATER":
+            return bool(args.get("on"))
+        if cmd == "SET_MODE":
+            return args.get("mode") not in ("NOMINAL", "SAFE")
+        return False
+
+    def _apply_safe_rule_to_schedule(self):
+        """The engine's own commands due this tick (background ground traffic) obey the same rule."""
+        t = self.twin.t
+        for k, m in self.twin.queue:
+            if k == t and self.refused_in_safe(m["sat"], m["cmd"], m.get("args") or {}):
+                m["_auth_ok"] = False
+
     def step(self):
         self.apply_inbox()
+        self._apply_safe_rule_to_schedule()
         tick = self.twin.t
         self.twin.step(1)
         for kind, raw in self.twin.messages_at(tick):

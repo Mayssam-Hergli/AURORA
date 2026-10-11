@@ -60,6 +60,52 @@ def test_bus_heater_command_heats_and_safe_mode_stops_it():
     assert obc[-1] == "SAFE"
 
 
+def test_safe_refuses_heater_on_from_any_origin_and_only_nominal_exits():
+    """interfaces.md 3.2 (v1.2): load shedding in SAFE, decided without knowing who is malicious."""
+    bus = FakeBus()
+    rt = ReplayTwin(bus, build_twin(seed=5, duration_s=300), list(T.SATS), start_t=1_800_000_000.0)
+
+    def run(n):
+        for _ in range(n):
+            rt.step()
+
+    def obc():
+        return [m.fields for t, m in bus.sent if t == T.tm("G", "obc")][-1]
+
+    run(5)
+    rt.on_tc(T.tc("G"), tc("G", "SAFE_MODE", origin="core"))
+    run(2)
+    assert obc()["mode"] == "SAFE"
+
+    def accepted(m):
+        return next(r["accepted"] for r in rt.twin.commands if r["id"] == m.id)
+
+    refused = [
+        tc("G", "HEATER", {"on": True}, origin="ground"),  # a spoofed ground command ...
+        tc("G", "HEATER", {"on": True}, origin="core"),  # ... and the core's own: both refused
+        tc("G", "SET_MODE", {"mode": "SCIENCE"}, origin="ground"),
+    ]
+    rej = obc()["cmd_rej"]
+    for m in refused:
+        rt.on_tc(T.tc("G"), m)
+    run(60)
+    assert [accepted(m) for m in refused] == [False, False, False]
+    assert obc()["cmd_rej"] >= rej + 3  # background ISL relays to a SAFE satellite are refused too
+    assert not rt.twin.heater_cmd[rt.twin.idx["G"]]
+    heater = [m.fields["heater_on"] for t, m in bus.sent if t == T.tm("G", "thermal")]
+    assert heater[-60:] == [0] * 60
+    assert obc()["mode"] == "SAFE"  # nothing but SET_MODE NOMINAL leaves SAFE
+    off = tc("G", "HEATER", {"on": False}, origin="ground")
+    nominal = tc("G", "SET_MODE", {"mode": "NOMINAL"}, origin="core")
+    rt.on_tc(T.tc("G"), off)  # still accepted in SAFE
+    rt.on_tc(T.tc("G"), nominal)
+    run(2)
+    assert accepted(off) and accepted(nominal) and obc()["mode"] == "NOMINAL"
+    rt.on_tc(T.tc("G"), tc("G", "HEATER", {"on": True}, origin="ground"))
+    run(3)
+    assert rt.twin.heater_cmd[rt.twin.idx["G"]]  # back in NOMINAL, the heater can be commanded again
+
+
 def test_own_commands_are_not_executed_twice_and_malformed_ones_are_rejected():
     bus = FakeBus()
     rt = ReplayTwin(bus, build_twin(seed=3, duration_s=200), list(T.SATS), start_t=1_800_000_000.0)
