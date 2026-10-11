@@ -1,0 +1,29 @@
+# CASSANDRA core configuration (docs/MASTER_PLAN.md Phase 4). Every threshold the core uses lives here.
+
+bus:
+  host: localhost
+  port: 1883
+  client_id: cassandra-core
+
+# Per-satellite profile = defaults, then the satellite's own overrides (interfaces.md Section 5).
+satellites:
+  ids: [A, B, C, D, E, F, G, H, I, J, K, L]
+  defaults:
+    kind: twin                    # twin | hw: the src the core expects from this satellite
+    subs: [thermal, eps, adcs, obc, comms, sun]
+    t_max_c: 45.0
+    soc_min_pct: 30.0
+    theta_max_deg: 10.0
+  overrides: {}
+  # When the ESP8266 board plays B (Phase 8), use:
+  #   overrides:
+  #     B: {kind: hw, subs: [thermal, obc], t_max_c: 60.0, soc_min_pct: null, theta_max_deg: null}
+
+ingest:
+  hold_s: 3.0                     # a value is held this long after its last message, then stale
+  close_grace_s: 0.0              # tick k closes when the clock source reaches k + 1 + grace
+  watchdog_s: 1.5                 # no clock progress for this long (wall clock): close the tick anyway
+  clock_offset_warn_s: 0.5        # warn when hw and twin clocks disagree by more than this
+  clock_offset_window: 50         # samples per source for the median offset
+  clock_warn_every_s: 60.0        # rate limit for the clock warning
+  max_jump_s: 300.0               # a clock jump larger than this re-syncs ticks instead of replaying them
