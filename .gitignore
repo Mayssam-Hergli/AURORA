@@ -19,6 +19,7 @@ htmlcov/
 # Virtual environments
 venv/
 .venv/
+.venv-win/
 env/
 ENV/
 cassandra-demo/
@@ -45,6 +46,8 @@ build/
 *.hex
 *.bin
 *.elf
+# exception: the Phase 2 firmware image (273 KB), the "flash this if the IDE fails" fallback
+!prototype/phase2-demo/firmware/sat_thermal.bin
 
 # ===== Secrets / env =====
 .env

@@ -18,10 +18,20 @@ satellites:
     heater_min_rise_c_s: 0.02     # heater on but temp_c rising slower than this = inconsistent telemetry
     heal_below_c: 30.0            # heal only once temp_c is back under this (Phase 2 predictor: < 30 C)
   overrides: {}
-  # When the ESP8266 board plays B (Phase 8), use (firmware model: +1.5 C/s while latched):
-  #   overrides:
-  #     B: {kind: hw, subs: [thermal, obc], t_max_c: 60.0, soc_min_pct: null, theta_max_deg: null,
-  #         heating_rate_c_s: 1.5, heater_min_rise_c_s: 0.5, heal_below_c: 30.0}
+  # The ESP8266 board (Phase 8). `python -m cassandra --twin-sats A,C-L` gives every satellite not
+  # listed this profile. Firmware model: 25 C ambient, +1.5 C/s while latched; T_max 60 C matches the
+  # submitted paper (emulated temperature). 4-tick slope window: the board reports at 2 Hz and Phase 2
+  # used 8 samples = 4 s (Mayssam, 11 Oct).
+  board_profile:
+    kind: hw
+    subs: [thermal, obc]
+    t_max_c: 60.0
+    soc_min_pct: null
+    theta_max_deg: null
+    heating_rate_c_s: 1.5
+    heater_min_rise_c_s: 0.5
+    heal_below_c: 30.0
+    window_s: 4
 
 ingest:
   hold_s: 3.0                     # a value is held this long after its last message, then stale

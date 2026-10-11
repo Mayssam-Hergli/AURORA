@@ -20,6 +20,34 @@ def load(path: str | Path | None = None, overrides: dict | None = None) -> dict:
     return cfg
 
 
+def parse_sats(spec: str) -> list[str]:
+    """'A-L' -> A..L, 'A,C-L' -> A, C..L."""
+    ids = "ABCDEFGHIJKL"
+    out: list[str] = []
+    for part in spec.split(","):
+        part = part.strip().upper()
+        if "-" in part:
+            a, b = part.split("-")
+            out += [s for s in ids if a <= s <= b]
+        elif part:
+            out.append(part)
+    return list(dict.fromkeys(out))
+
+
+def with_twin_sats(cfg: dict, spec: str | None) -> dict:
+    """Satellites not in `spec` are hardware: they get satellites.board_profile (Phase 8)."""
+    if not spec:
+        return cfg
+    twins = set(parse_sats(spec))
+    sc = cfg["satellites"]
+    over = dict(sc.get("overrides") or {})
+    for sat in sc["ids"]:
+        if sat not in twins:
+            over[sat] = {**sc["board_profile"], **over.get(sat, {})}
+    sc["overrides"] = over
+    return cfg
+
+
 def profiles(cfg: dict) -> dict[str, SatProfile]:
     sc = cfg["satellites"]
     out = {}
@@ -35,6 +63,7 @@ def profiles(cfg: dict) -> dict[str, SatProfile]:
             heating_rate_c_s=float(p["heating_rate_c_s"]),
             heater_min_rise_c_s=float(p["heater_min_rise_c_s"]),
             heal_below_c=float(p["heal_below_c"]),
+            window_s=int(p["window_s"]) if p.get("window_s") else None,
         )
     return out
 

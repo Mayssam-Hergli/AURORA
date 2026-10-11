@@ -122,12 +122,17 @@ def main(argv=None) -> int:
     ap.add_argument("--host", default=None)
     ap.add_argument("--port", type=int, default=None)
     ap.add_argument("--client-id", default=None, help="MQTT client id (default: config bus.client_id)")
+    ap.add_argument(
+        "--twin-sats",
+        default=None,
+        help="satellites played by the twin, e.g. A,C-L; the others get satellites.board_profile (hardware)",
+    )
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if a.verbose else logging.WARNING, format="%(asctime)s %(name)s %(message)s"
     )
-    cfg = config.load(a.config)
+    cfg = config.with_twin_sats(config.load(a.config), a.twin_sats)
     if a.client_id:
         cfg["bus"]["client_id"] = a.client_id
     host, port = a.host or cfg["bus"]["host"], a.port or cfg["bus"]["port"]

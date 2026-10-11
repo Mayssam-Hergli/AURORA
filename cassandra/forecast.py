@@ -245,7 +245,10 @@ class ForecastStage:
         fc = cfg["forecast"]
         self.profiles = profiles
         self.decision_horizon = int(fc["decision_horizon_s"])
-        self.traj = {s: Trajectory(p, int(fc["window_s"]), fc.get("min_level")) for s, p in profiles.items()}
+        self.traj = {
+            s: Trajectory(p, p.window_s or int(fc["window_s"]), fc.get("min_level"))
+            for s, p in profiles.items()
+        }
         self.ensemble = ensemble
         self.startup_notes: list[Note] = []
 

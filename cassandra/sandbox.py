@@ -395,12 +395,13 @@ class Sandbox:
 
     def _risk(self, p: SatProfile, temp: np.ndarray, soc: np.ndarray) -> float:
         """P(F < t + horizon) a trajectory forecaster would see at the end of the rollout."""
-        t = np.arange(len(temp), dtype=float)[-self.window :]
+        w = p.window_s or self.window
+        t = np.arange(len(temp), dtype=float)[-w:]
         best = 0.0
         for x, limit, sign in ((temp, p.t_max_c, 1.0), (soc, p.soc_min_pct, -1.0)):
             if limit is None:
                 continue
-            x = x[-self.window :]
+            x = x[-w:]
             gap = (limit - x[-1]) * sign
             rate = slope(t, x) * sign
             eta = 0.0 if gap <= 0 else (gap / rate if rate > 1e-6 else math.inf)
