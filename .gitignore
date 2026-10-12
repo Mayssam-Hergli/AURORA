@@ -87,3 +87,9 @@ results/*
 !results/manifest.json
 !results/live_manifest.json
 !results/live_manifest_heat0.2.json
+
+# Frozen hardening evidence; predictions, caches and checkpoints remain local.
+!results/FINAL_RUN_MANIFEST.json
+!results/DATASET_SHA256SUMS.json
+!results/frozen/
+!results/frozen/*.json

@@ -48,11 +48,12 @@ class Monitor:
         self.recover = int(c["recover_s"])
         self.hist: dict[str, deque] = {s: deque(maxlen=self.window) for s in profiles}
         self.untrusted: dict[str, set[str]] = {s: set() for s in profiles}
+        self.cross_active: set[tuple[str, str]] = set()
         self.active_rule: dict[str, str] = {}
         self.consistent_run: dict[str, int] = {s: 0 for s in profiles}
 
     def step(self, tick: WorldTick) -> list[MonitorEvent]:
-        events: list[MonitorEvent] = []
+        events: list[MonitorEvent] = self._cross_checks(tick)
         for sat, prof in self.profiles.items():
             th = tick.fresh(sat, "thermal")
             h = self.hist[sat]
@@ -89,6 +90,45 @@ class Monitor:
                             "recovered",
                             ("temp_c",),
                             f"[{sat}] temp_c consistent with the heater again for {self.recover} s: trusted",
+                        )
+                    )
+        return events
+
+    def _cross_checks(self, tick: WorldTick) -> list[MonitorEvent]:
+        """Independent consistency evidence, not proof of malicious intent."""
+        events = []
+        for sat in self.profiles:
+            eps = tick.fresh(sat, "eps") or {}
+            adcs = tick.fresh(sat, "adcs") or {}
+            checks = {}
+            if all(k in eps for k in ("bus_v", "current_ma", "load_w")):
+                measured = eps["bus_v"] * eps["current_ma"] / 1000
+                checks["eps_power_balance"] = (
+                    abs(measured - eps["load_w"]) > max(5.0, 0.25 * abs(eps["load_w"])),
+                    ("bus_v", "current_ma", "load_w"),
+                )
+            if "wheel_rpm" in adcs:
+                wheels = np.asarray(adcs["wheel_rpm"], float)
+                checks["adcs_sensor_range"] = (
+                    not np.isfinite(wheels).all() or (abs(wheels) > 100_000).any(),
+                    ("wheel_rpm",),
+                )
+            for rule, (hit, fields) in checks.items():
+                key = (sat, rule)
+                if hit != (key in self.cross_active):
+                    if hit:
+                        self.cross_active.add(key)
+                    else:
+                        self.cross_active.discard(key)
+                    events.append(
+                        MonitorEvent(
+                            sat,
+                            "hit" if hit else "clear",
+                            rule,
+                            fields,
+                            f"[{sat}] {rule}: {'inconsistent' if hit else 'consistent again'}; "
+                            "sensor/model evidence requires corroboration",
+                            data={"assurance": "LOW_ASSURANCE", "malicious": None},
                         )
                     )
         return events

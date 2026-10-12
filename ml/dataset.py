@@ -65,7 +65,7 @@ def make_batch(c: dict, items: list[tuple[int, int]], W: int) -> dict:
 
 
 def episode_windows(c: dict, ep: int, W: int, t_from: int = 0, t_to: int | None = None):
-    """All windows of one episode (for per-tick evaluation): raw [T, W, S, 27], links [T, P]."""
+    """All windows of one episode (for per-tick evaluation): raw [T, W, S, 33], links [T, P]."""
     T = c["raw"].shape[1]
     t_to = T if t_to is None else t_to
     ticks = np.arange(t_from, t_to)

@@ -26,7 +26,7 @@ from ml.model import HORIZONS
 from ml.train import load_model, val_items
 
 OUT = config.RESULTS / "eval"
-SPLITS = ["val", "test_id", "test_ood", "test_real"]
+SPLITS = ["val", "test_id", "test_ood", "test_real", "test_hard"]
 
 
 def splits() -> list[str]:
@@ -226,7 +226,7 @@ def compute_metrics():
         }
         for k in range(len(HORIZONS)):
             out[f"ensemble@{HORIZONS[k]}"] = p_ens[..., k]
-        out["ensemble@act"] = out["ensemble"]
+        out["ensemble@0.85"] = out["ensemble"]
         for m in abl_names:
             if (OUT / f"pred_{m}_{split}.npz").exists():
                 pb = _load_pred(m, split, T)["bins"]
@@ -242,9 +242,9 @@ def compute_metrics():
     cv, iv = data["val"]
     benign_v = M.benign_mask(cv, iv.kind.to_numpy())
     taus = {k: M.tau_at_fpr(v, benign_v, ev["target_fpr"]) for k, v in val_scores.items()}
-    taus["ensemble@act"] = float(
+    taus["ensemble@0.85"] = float(
         ev["response"]["act_threshold"]
-    )  # the response engine's own action threshold
+    )  # fixed operating point, not runtime policy
     results = {"temperature": temp, "tau": taus, "splits": {}}
     cal = Cal.calibration_record(temp, taus["ensemble"], ens_names, ev)
     (config.MODELS / "calibration.json").write_text(json.dumps(cal, indent=1))

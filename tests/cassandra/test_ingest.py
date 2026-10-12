@@ -107,7 +107,8 @@ def test_provenance_mismatch_is_reported_once():
     for k in range(3):
         feed_tm(ing, "B", "thermal", T0 + k, k, src="twin")  # B is the board: must be src hw
         feed_tm(ing, "E", "thermal", T0 + k, k, src="synthetic")  # offline data on the live bus
-    notes = [n for t in ing.poll(wall=T0 + 2.5) for n in t.notes if n.kind == "provenance"]
+    feed_tm(ing, "E", "thermal", T0 + 3, 0, src="twin")  # trusted message drives clock
+    notes = [n for t in ing.poll(wall=T0 + 3.5) for n in t.notes if n.kind == "provenance"]
     assert sorted((n.sat, n.data["src"]) for n in notes) == [("B", "twin"), ("E", "synthetic")]
 
 

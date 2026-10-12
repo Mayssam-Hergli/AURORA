@@ -17,12 +17,18 @@ import json
 import numpy as np
 import torch
 
+from eval.metrics import bootstrap
 from ml import baselines as BL
 from ml import config, features
 from ml import graph as G
 from ml.train import load_model
 
-FORGEABLE = [c for t in ("thermal", "eps", "adcs") for c in G.CHANNELS[t] if c != "heater_on"]
+FORGEABLE = [
+    c
+    for t in ("thermal", "eps", "adcs")
+    for c in G.CHANNELS[t]
+    if c != "heater_on" and not c.endswith(("_missing", "_age_s"))
+]
 
 
 def ensemble_p60(models, raw, links, temp):
@@ -32,7 +38,7 @@ def ensemble_p60(models, raw, links, temp):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--episodes", type=int, default=16)
+    ap.add_argument("--episodes", type=int, default=64)
     ap.add_argument("--steps", type=int, default=8)
     ap.add_argument("--chunk", type=int, default=8)
     a = ap.parse_args(argv)
@@ -57,7 +63,16 @@ def main(argv=None):
         if c["crit"][e, s] >= 0 and idx.kind[e] == "attack" and c["onset"][e].max() >= 0
     ]
     rng = np.random.default_rng(0)
-    pick = [cands[i] for i in rng.choice(len(cands), min(a.episodes, len(cands)), replace=False)]
+    groups = {}
+    for e, sat in cands:
+        groups.setdefault(str(idx.type[e]), []).append((e, sat))
+    for group in groups.values():
+        rng.shuffle(group)
+    pick = []
+    while len(pick) < min(a.episodes, len(cands)):
+        for group in groups.values():
+            if group and len(pick) < a.episodes:
+                pick.append(group.pop())
     results = {}
     for eps in (0.0, 0.25, 0.5, 1.0):
         leads, thr_leads, q_means = [], [], []
@@ -65,7 +80,7 @@ def main(argv=None):
             on = int(c["onset"][e][c["onset"][e] >= 0].min())
             tc = int(c["crit"][e, s])
             ticks = np.arange(on, tc, 2)
-            base = torch.tensor(c["raw"][e].astype(np.float32))  # [T, S, 27]
+            base = torch.tensor(c["raw"][e].astype(np.float32))  # [T, S, 33]
             links = torch.tensor(c["links"][e][ticks])
             widx = torch.tensor(np.clip(ticks[:, None] + np.arange(-W + 1, 1)[None], 0, None))
             delta = torch.zeros_like(base, requires_grad=True)
@@ -112,8 +127,18 @@ def main(argv=None):
             threshold_recall=float((TL > 0).mean()),
             threshold_median_lead_s=float(np.median(TL[TL > 0])) if (TL > 0).any() else 0.0,
         )
+        for prefix, values in (("ensemble", L), ("threshold", TL)):
+            rows = [dict(episode=e, detected=lead > 0, lead=lead) for (e, _), lead in zip(pick, values)]
+            results[f"eps={eps}"][prefix + "_ci"] = bootstrap(rows)
         print(eps, results[f"eps={eps}"], flush=True)
-    out = dict(episodes=len(pick), steps=a.steps, forgeable=FORGEABLE, results=results)
+    out = dict(
+        episodes=len(pick),
+        steps=a.steps,
+        selection="type-stratified round robin, seed 0",
+        by_type={kind: sum(str(idx.type[e]) == kind for e, _ in pick) for kind in groups},
+        forgeable=FORGEABLE,
+        results=results,
+    )
     (config.RESULTS / "eval" / "robustness.json").write_text(json.dumps(out, indent=1))
 
 

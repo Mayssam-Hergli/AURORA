@@ -1,13 +1,13 @@
 """Simulate stage: score candidate responses with J(a) on a shadow model (CONTEXT Section 2, 5.4).
 
-    J(a) = w_r R(a) + w_m (1 - U(a)) + w_c C(a) + w_q Q
+    J(a) = w_r R(a) + w_m (1 - U(a)) + w_c C(a)
 
 R: expected number of satellites reaching F, i.e. the sum over satellites of P(F < t + decision
 horizon) after a `rollout_s` rollout with action a applied (1 for a satellite whose limit is crossed
 during the rollout). A sum, not a max: an action that spares more satellites scores lower.
 U: fraction of satellites still in service. C: operational cost of a (config).
-Q: the forecast's q; when q is null (single model, D4) the Q term is left out, never replaced by 0
-as if the model were certain.
+Q: reported in the decision trace and used by the safety gate. It does not rank actions because
+the same pre-action uncertainty cannot distinguish candidates.
 
 Shadow model (fixes review finding M2). Twin satellites: a fresh SyntheticTwin seeded from the latest
 *observations* and with an *empty* command queue. The real attacker's future commands are never
@@ -33,10 +33,11 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from aurora_common.criticality import critical
 from cassandra.monitor import slope
 from cassandra.world import SatProfile, WorldTick
 
-ACTIONS = ("none", "safe_mode", "block_source", "isolate_subsystem", "quarantine")
+ACTIONS = ("none", "safe_mode", "block_source", "cut_heater", "quarantine")
 
 
 @dataclass
@@ -50,7 +51,7 @@ class Candidate:
         x = self.target
         if self.action == "safe_mode":
             return [(x, "SAFE_MODE", {})]
-        if self.action == "isolate_subsystem":
+        if self.action == "cut_heater":
             return [(x, "HEATER", {"on": False})]  # cut the heater: the subsystem driving the hazard
         if self.action == "block_source":
             peer = self.args["origin"].split(":", 1)[1]
@@ -241,12 +242,14 @@ class Sandbox:
         for sat, subs in tick.values.items():
             th, eps, obc = subs.get("thermal"), subs.get("eps"), subs.get("obc")
             sun, comms = subs.get("sun"), subs.get("comms")
+            adcs = subs.get("adcs") or {}
             sats[sat] = {
                 "temp_c": temps.get(sat, th["temp_c"] if th else None),
                 "heater_on": th["heater_on"] if th else 0,
                 "soc_pct": eps["soc_pct"] if eps else None,
                 "mode": obc["mode"] if obc else "NOMINAL",
                 "temp_rate_c_s": rates.get(sat),
+                **{k: adcs[k] for k in ("att_err_deg", "wheel_rpm", "rate_dps") if k in adcs},
                 **({"eclipse": sun["eclipse"]} if sun else {}),
                 **({"ground_contact": comms["ground_contact"]} if comms else {}),
             }
@@ -296,6 +299,11 @@ class Sandbox:
         cands = self.candidates(target, suspicious_origins, budget_ok, allowed)
         if not cands:
             return []
+        thermal = tick.fresh(target, "thermal") or {}
+        cands = [c for c in cands if c.action != "cut_heater" or thermal.get("heater_on")]
+        for c in cands:
+            if c.action == "cut_heater":
+                c.args = {"subsystem": "thermal", "effect": "heater_off"}
         now = tick.t + 1.0
         threats = threats or []
         prof = self.profiles[target]
@@ -310,7 +318,7 @@ class Sandbox:
 
     def _j(self, c: Candidate, R: float, U: float, q: float | None) -> float:
         J = self.w["w_r"] * R + self.w["w_m"] * (1 - U) + self.w["w_c"] * self.cost[c.action]
-        return J + (self.w["w_q"] * q if q is not None else 0.0)
+        return J  # Uncertainty is a safety constraint, not an action-independent ranking offset.
 
     def _score_twin(
         self, c: Candidate, base, q: float | None, ignore: list[str], threats: list[Threat], now: float
@@ -324,6 +332,7 @@ class Sandbox:
         S = tw.S
         temp = np.zeros((self.rollout, S))
         soc = np.zeros((self.rollout, S))
+        attitude = np.zeros((self.rollout, S))
         crossed = np.zeros(S, bool)
         due = {th: set(th.due(now, self.rollout)) for th in threats}
         resent = 0
@@ -339,20 +348,18 @@ class Sandbox:
                     resent += 1
             tw.step(1)
             temp[k], soc[k] = tw.temp, tw.soc * 100
+            attitude[k] = tw.true["att_err_deg"][tw.t - 1]
             for s, sat in enumerate(tw.sats):
                 p = self.profiles.get(sat)
                 if p is None:
                     continue
-                if (p.t_max_c is not None and tw.temp[s] > p.t_max_c) or (
-                    p.soc_min_pct is not None and tw.soc[s] * 100 < p.soc_min_pct
-                ):
-                    crossed[s] = True
+                crossed[s] |= critical(tw.temp[s], tw.soc[s] * 100, attitude[k, s], vars(p))
         risk = {}
         for s, sat in enumerate(tw.sats):
             p = self.profiles.get(sat)
             if p is None or sat in ignore:
                 continue
-            risk[sat] = 1.0 if crossed[s] else self._risk(p, temp[:, s], soc[:, s])
+            risk[sat] = 1.0 if crossed[s] else self._risk(p, temp[:, s], soc[:, s], attitude[:, s])
         R = float(sum(risk.values()))  # expected number of satellites reaching F
         in_service = [tw.mode[tw.idx[s]] == MODE_NOMINAL for s in tw.sats if s in self.profiles]
         U = float(np.mean(in_service)) if in_service else 1.0
@@ -376,12 +383,17 @@ class Sandbox:
             },
         )
 
-    def _risk(self, p: SatProfile, temp: np.ndarray, soc: np.ndarray) -> float:
+    def _risk(self, p: SatProfile, temp: np.ndarray, soc: np.ndarray, attitude=None) -> float:
         """P(F < t + horizon) a trajectory forecaster would see at the end of the rollout."""
         w = p.window_s or self.window
         t = np.arange(len(temp), dtype=float)[-w:]
         best = 0.0
-        for x, limit, sign in ((temp, p.t_max_c, 1.0), (soc, p.soc_min_pct, -1.0)):
+        dimensions = [(temp, p.t_max_c, 1.0), (soc, p.soc_min_pct, -1.0)]
+        if attitude is not None:
+            dimensions.append((np.abs(attitude), p.theta_max_deg, 1.0))
+        elif p.theta_max_deg is not None:
+            return 1.0  # Missing enabled attitude state cannot certify a safe rollout.
+        for x, limit, sign in dimensions:
             if limit is None:
                 continue
             x = x[-w:]
@@ -407,7 +419,7 @@ class Sandbox:
             "heater_on": 0,
         }
         T = temps.get(c.target, th["temp_c"])
-        heater = bool(th["heater_on"]) and c.action not in ("safe_mode", "quarantine", "isolate_subsystem")
+        heater = bool(th["heater_on"]) and c.action not in ("safe_mode", "quarantine", "cut_heater")
         safe = c.action in ("safe_mode", "quarantine")
         due = set()
         for t_ in threats:

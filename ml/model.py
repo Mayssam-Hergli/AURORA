@@ -1,6 +1,6 @@
 """Temporal graph forecaster (docs/CONTEXT.md Section 5.5).
 
-    input   30 s window of the 27 per-satellite channels + ISL status at the window end
+    input   30 s window of the 33 per-satellite channels + ISL status at the window end
     prep    normalisation, first differences, physical residual dPhi_ij and level residual l_ij on
             every engineering edge (engineering model g_ij fitted on clean episodes)
     memory  GRU over the window for every node (per-type input projection)
@@ -28,7 +28,7 @@ HORIZONS = (10, 30, 60, 120)
 
 
 class Prep(nn.Module):
-    """Raw window [B, W, S, 27] -> node features [B, W, N, 2*F_RAW], residuals [B, W, E_eng, 2]."""
+    """Raw window [B, W, S, 33] -> node features [B, W, N, 2*F_RAW], residuals [B, W, E_eng, 2]."""
 
     def __init__(self, und, g: G.Graph, use_residual: bool = True):
         super().__init__()
@@ -110,6 +110,13 @@ class Forecaster(nn.Module):
     ):
         super().__init__()
         self.S, self.N = g.n_sats, g.n_nodes
+        self.telemetry_only = False
+        self.register_buffer(
+            "command_indices",
+            torch.tensor(
+                [G.FLAT.index(n) for n in G.FLAT if n.startswith(("tc_", "d_cmd_"))], dtype=torch.long
+            ),
+        )
         self.prep = Prep(und, g, use_residual)
         self.register_buffer("src", torch.tensor(g.src, dtype=torch.long))
         self.register_buffer("dst", torch.tensor(g.dst, dtype=torch.long))
@@ -136,8 +143,11 @@ class Forecaster(nn.Module):
         self.head_next = nn.Linear(hid, 1)
 
     def forward(self, raw, links, return_att: bool = False):
-        """raw [B, W, S, 27] (physical units), links [B, n_pairs] enabled ISLs at the window end."""
+        """raw [B, W, S, 33] (physical units), links [B, n_pairs] enabled ISLs at the window end."""
         B, W = raw.shape[:2]
+        if self.telemetry_only:
+            raw = raw.clone()
+            raw[..., self.command_indices] = 0.0
         x, res = self.prep(raw)
         xe = torch.einsum("bwnf,nfh->bwnh", x, self.in_proj[self.type_of]) + self.type_emb[self.type_of]
         _, hN = self.gru(torch.relu(xe).permute(0, 2, 1, 3).reshape(B * self.N, W, -1))
@@ -166,7 +176,7 @@ class Forecaster(nn.Module):
             "next_logits": self.head_next(hs[:, :, :6]).squeeze(-1),
         }
         if return_att:
-            out["attention"] = atts[-1]
+            out["attention"] = atts[-1] if atts else mask * 0
         return out
 
 

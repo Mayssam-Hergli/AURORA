@@ -104,7 +104,7 @@ def test_recorded_episode_opens_with_ml_schema_and_features(tmp_path):
     e = ep["ml_labels"].satellites["E"]
     assert e.onset_t == 10.0 and e.malicious is True
     arr = features.episode_arrays(path)
-    assert arr["raw"].shape == (180, 12, 27) and arr["onset"][4] == 10
+    assert arr["raw"].shape == (180, 12, len(features.graph.FLAT)) and arr["onset"][4] == 10
     truth = sorted({m.sat for t, m in bus.sent if t == T.GT_EVENT})
     assert ep["labels"].params["critical_from_truth"] == truth
 

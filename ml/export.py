@@ -26,12 +26,15 @@ import numpy as np
 import torch
 
 from ml import config
+from ml import graph as G
 from ml.calibration import read_calibration
 from ml.train import load_model
 
 
 def example_inputs(n_sats=12, window=30):
-    return torch.zeros(1, window, n_sats, 27), torch.zeros(1, n_sats * (n_sats - 1) // 2, dtype=torch.bool)
+    return torch.zeros(1, window, n_sats, len(G.FLAT)), torch.zeros(
+        1, n_sats * (n_sats - 1) // 2, dtype=torch.bool
+    )
 
 
 class _Wrapped(torch.nn.Module):

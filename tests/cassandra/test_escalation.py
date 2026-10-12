@@ -1,5 +1,5 @@
 """Escalation: repeated hazardous commands are modelled as continuing, a containment that does not
-hold is escalated (isolate_subsystem -> safe_mode -> quarantine, each re-planned with J), and healing
+hold is escalated (cut_heater -> safe_mode -> quarantine, each re-planned with J), and healing
 waits until the repeated commands stop. In process, replay plant, no broker."""
 
 import pytest
@@ -22,7 +22,7 @@ def attack_with_reassert(period: int, stop_at: int, total: int = 1400, seed: int
 
 @pytest.fixture(scope="module")
 def slow_reassert():
-    """The second copy arrives after the first containment (isolate_subsystem) is in place."""
+    """The second copy arrives after the first containment (cut_heater) is in place."""
     return attack_with_reassert(period=150, stop_at=500)
 
 
@@ -35,11 +35,11 @@ def fast_reassert():
 def test_failed_isolation_escalates_to_safe_mode_with_an_explanation(slow_reassert):
     lp = slow_reassert
     acts = [a.action for a in lp.actions if a.target == "E"]
-    assert acts[:2] == ["isolate_subsystem", "safe_mode"]
+    assert acts[:2] == ["cut_heater", "safe_mode"]
     (esc,) = [e for e in lp.events if e.sat == "E" and "escalation:" in e.text]
-    assert "isolate_subsystem did not hold (heater ON again" in esc.text
+    assert "cut_heater did not hold (heater ON again" in esc.text
     second = [a for a in lp.actions if a.target == "E"][1]
-    assert [x.action for x in second.alternatives] == ["quarantine"]  # only stronger actions re-planned
+    assert [x.action for x in second.alternatives] == []  # unknown uncertainty withholds quarantine
 
 
 def test_heal_waits_for_the_repeated_commands_to_stop(slow_reassert):
@@ -56,7 +56,7 @@ def test_fast_reassert_is_planned_beyond_isolation_from_the_start(fast_reassert)
     lp = fast_reassert
     first = next(a for a in lp.actions if a.target == "E")
     assert first.action in ("safe_mode", "quarantine")
-    iso = next(x for x in first.alternatives if x.action == "isolate_subsystem")
+    iso = next(x for x in first.alternatives if x.action == "cut_heater")
     assert iso.J > first.J + 0.5  # the shadow sees the heater latched again after the cut
     assert [s for _, s in lp.states["E"]][-1] == "nominal"
     assert max(lp.true_temp["E"]) < 45.0

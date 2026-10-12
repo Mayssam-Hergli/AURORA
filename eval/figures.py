@@ -50,7 +50,11 @@ LABEL = {
     "lstm_ae": "LSTM autoencoder",
     "gdn": "GDN",
 }
-SPLIT = {"test_id": "In-distribution", "test_ood": "Held-out families", "test_real": "OPS-SAT real noise"}
+SPLIT = {
+    "test_id": "In-distribution",
+    "test_ood": "Held-out families",
+    "test_real": "Synthetic + OPS-SAT noise/gaps",
+}
 
 
 def save(fig, name):

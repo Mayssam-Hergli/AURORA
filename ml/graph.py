@@ -47,9 +47,17 @@ ISL_TECHNIQUE = "IA-0003"
 
 # per-satellite raw channels (telemetry fields of Section 6.2 + command statistics from the tc topic)
 CHANNELS = {
-    "thermal": ["temp_c", "heater_on"],
-    "eps": ["soc_pct", "bus_v", "load_w", "solar_w", "current_ma"],
-    "adcs": ["att_err_deg", "wheel_rpm_0", "wheel_rpm_1", "wheel_rpm_2", "rate_dps"],
+    "thermal": ["temp_c", "heater_on", "temp_c_missing", "temp_c_age_s"],
+    "eps": ["soc_pct", "soc_pct_missing", "soc_pct_age_s", "bus_v", "load_w", "solar_w", "current_ma"],
+    "adcs": [
+        "att_err_deg",
+        "att_err_deg_missing",
+        "att_err_deg_age_s",
+        "wheel_rpm_0",
+        "wheel_rpm_1",
+        "wheel_rpm_2",
+        "rate_dps",
+    ],
     "obc": [
         "mode_safe",
         "mode_quarantined",
@@ -65,7 +73,7 @@ CHANNELS = {
     "comms": ["ground_contact", "n_isl_peers", "rssi_dbm"],
     "sun": ["level", "eclipse"],
 }
-FLAT = [c for t in SUBSYSTEM_TYPES for c in CHANNELS[t]]  # 27 channels per satellite
+FLAT = [c for t in SUBSYSTEM_TYPES for c in CHANNELS[t]]  # 33 channels per satellite
 SLICE = {}
 _o = 0
 for _t in SUBSYSTEM_TYPES:
@@ -120,8 +128,9 @@ def build(n_sats: int, variant: str = "full") -> Graph:
         if variant != "no_eng":
             for p in E_ENG:
                 intra.setdefault(p, set()).add("eng")
-        for p in E_SPARTA:
-            intra.setdefault(p, set()).add("sparta")
+        if variant != "no_sparta":
+            for p in E_SPARTA:
+                intra.setdefault(p, set()).add("sparta")
     for a in SUBSYSTEM_TYPES:
         intra.setdefault((a, "sat"), set()).add("agg")
     eng_list = [p for p in E_ENG if variant not in ("no_eng",)]

@@ -25,11 +25,11 @@ def test_board_sandbox_prefers_isolation_once_and_safe_mode_under_reassertion():
     sb = Sandbox(config.profiles(cfg), cfg)
     tick = world(T0, {"B": thermal(40.0, 1)})
     once = sb.plan(tick, "B", None, {}, {}, [], True)
-    assert once[0].action == "isolate_subsystem"
+    assert once[0].action == "cut_heater"
     th = Threat("ground", "HEATER", (("on", True),), ("B",), 5.0, T0, 6)
     again = sb.plan(tick, "B", None, {}, {}, [], True, [th])
     assert again[0].action in ("safe_mode", "quarantine")
-    assert next(s for s in again if s.action == "isolate_subsystem").crossed  # re-latched: 60 C reached
+    assert next(s for s in again if s.action == "cut_heater").crossed  # re-latched: 60 C reached
 
 
 def test_board_flags_within_seconds_with_the_4_tick_window():

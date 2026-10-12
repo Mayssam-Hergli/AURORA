@@ -186,7 +186,15 @@ def one_model(tmp_path, monkeypatch, understanding):
     understanding.save(tmp_path / "understanding.npz")
     mc = config.load("model")
     m = build_model("full", mc, 12)
-    ck = {"state": m.state_dict(), "variant": "full", "seed": 0, "model_cfg": mc, "n_sats": 12}
+    ck = {
+        "state": m.state_dict(),
+        "variant": "full",
+        "seed": 0,
+        "model_cfg": mc,
+        "n_sats": 12,
+        "channels": features.graph.FLAT,
+        "feature_schema": "causal-v2",
+    }
     torch.save(ck, tmp_path / "full_s0.pt")
     return tmp_path
 

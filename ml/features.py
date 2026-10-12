@@ -1,7 +1,7 @@
 """Understand stage, offline part: episode files -> arrays, normalisation, engineering model, couplings.
 
 Input is any Section 6.3 episode (twin, recorder or converted dataset). Per satellite and tick we
-build 27 channels (graph.FLAT): the Section 6.2 telemetry fields plus command statistics derived
+build 33 channels (graph.FLAT): the Section 6.2 telemetry fields plus command statistics derived
 from the telecommand log (counts per origin and per command type). Only observable data is used:
 labels.json / ml_labels.json feed the training targets, never the model inputs.
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -42,63 +43,18 @@ def episode_arrays(path, sats: list[str] | None = None) -> dict:
     tel, cmds = tel[tel.sat.isin(sats)], cmds[cmds.sat.isin(sats)] if len(cmds) else cmds
     links = links[links.a.isin(sats) & links.b.isin(sats)]
     S = len(sats)
-    sidx = {s: i for i, s in enumerate(sats)}
-    raw = np.zeros((T, S, len(graph.FLAT)), np.float32)
-    tel = tel.assign(tick=np.rint((tel.t - t0) / dt).astype(int), si=tel.sat.map(sidx))
-    col = {c: i for i, c in enumerate(graph.FLAT)}
-    direct = {
-        "thermal": ["temp_c", "heater_on"],
-        "eps": ["soc_pct", "bus_v", "load_w", "solar_w", "current_ma"],
-        "adcs": ["att_err_deg", "wheel_rpm_0", "wheel_rpm_1", "wheel_rpm_2", "rate_dps"],
-        "comms": ["ground_contact", "rssi_dbm"],
-        "sun": ["level", "eclipse"],
-    }
-    for sub, fields in direct.items():
-        d = tel[tel["sub"] == sub]
-        for f in fields:
-            grid = np.full((T, S), np.nan, np.float32)
-            grid[d.tick.to_numpy(), d.si.to_numpy()] = d[f].to_numpy(np.float32)
-            raw[:, :, col[f]] = _ffill(grid)
-    d = tel[tel["sub"] == "comms"]
-    peers = np.zeros((T, S), np.float32)
-    peers[d.tick.to_numpy(), d.si.to_numpy()] = [
-        0 if not p or p == "None" else len(p.split(",")) for p in d.isl_peers
-    ]
-    raw[:, :, col["n_isl_peers"]] = peers
-    d = tel[tel["sub"] == "obc"]
-    for name, mode in (("mode_safe", "SAFE"), ("mode_quarantined", "QUARANTINED")):
-        g = np.zeros((T, S), np.float32)
-        g[d.tick.to_numpy(), d.si.to_numpy()] = (d["mode"] == mode).to_numpy(np.float32)
-        raw[:, :, col[name]] = g
-    for name, field in (("d_cmd_ok", "cmd_ok"), ("d_cmd_rej", "cmd_rej")):
-        g = np.full((T, S), np.nan, np.float32)
-        g[d.tick.to_numpy(), d.si.to_numpy()] = d[field].to_numpy(np.float32)
-        g = _ffill(g)
-        raw[:, :, col[name]] = np.clip(np.diff(g, axis=0, prepend=g[:1]), 0, None)
-    if len(cmds):
-        c = cmds.assign(
-            tick=np.clip(np.rint((cmds.t - t0) / dt).astype(int), 0, T - 1), si=cmds.sat.map(sidx)
-        )
-        kind = c.origin.map(schema.origin_kind)
-        args_on = c.args.map(heater_on_arg)
-        for name, m in (
-            ("tc_ground", kind == "ground"),
-            ("tc_isl", kind == "isl"),
-            ("tc_unknown", kind.isin(["unknown", "none"])),
-            ("tc_heater_on", (c.cmd == "HEATER") & args_on),
-            ("tc_set_mode", c.cmd == "SET_MODE"),
-            ("tc_ping", c.cmd == "PING"),
-        ):
-            g = np.zeros((T, S), np.float32)
-            np.add.at(g, (c.tick[m].to_numpy(), c.si[m].to_numpy()), 1.0)
-            raw[:, :, col[name]] = g
-    pairs = graph.sat_pairs(S)
-    pidx = {(sats[a], sats[b]): k for k, (a, b) in enumerate(pairs)}
-    lk = np.zeros((T, len(pairs)), bool)
-    li = links.assign(
-        tick=np.rint((links.t - t0) / dt).astype(int), k=[pidx[(a, b)] for a, b in zip(links.a, links.b)]
-    )
-    lk[li.tick.to_numpy(), li.k.to_numpy()] = li.enabled.to_numpy(bool)
+    from ml.frames import FrameBuilder, episode_messages
+
+    builder = FrameBuilder(sats)
+    raw_frames, link_frames = [], []
+    observed = dict(telemetry=tel, commands=cmds, links=links)
+    for t, messages in episode_messages(observed, t0=t0, n_ticks=T, dt=dt):
+        for kind, msg in messages:
+            {"tm": builder.on_telemetry, "tc": builder.on_command, "link": builder.on_link}[kind](msg)
+        frame, link = builder.frame(t)
+        raw_frames.append(frame)
+        link_frames.append(link)
+    raw, lk = np.stack(raw_frames), np.stack(link_frames)
     truth = truth_arrays(ml, sats) if ml is not None else no_truth(S)
     return dict(raw=raw, links=lk, **truth)
 
@@ -121,7 +77,7 @@ def no_truth(S: int) -> dict:
 
 
 def _ffill(g):
-    out = pd.DataFrame(g).ffill().bfill().to_numpy(np.float32)
+    out = pd.DataFrame(g).ffill().to_numpy(np.float32)
     return np.nan_to_num(out)
 
 
@@ -143,15 +99,22 @@ def truth_arrays(ml: schema.MLLabels, sats: list[str]) -> dict:
 
 
 # ----------------------------------------------------------------------------- cache
-def build_cache(split: str) -> dict:
+def build_cache(split: str, workers: int = 1) -> dict:
     root = config.EPISODES / split
     index = pd.read_csv(root / "index.csv")
-    arrays = [episode_arrays(root / e) for e in index.episode_id]
+    paths = [root / e for e in index.episode_id]
+    if workers > 1:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            arrays = list(pool.map(episode_arrays, paths, chunksize=4))
+    else:
+        arrays = [episode_arrays(p) for p in paths]
     out = {k: np.stack([a[k] for a in arrays]) for k in arrays[0]}
     out["raw"] = out["raw"].astype(np.float16)
     config.CACHE.mkdir(parents=True, exist_ok=True)
-    np.savez(config.CACHE / f"{split}.npz", **out)
+    temporary = config.CACHE / f"{split}.tmp.npz"
+    np.savez(temporary, **out)
     index.to_csv(config.CACHE / f"{split}_index.csv", index=False)
+    temporary.replace(config.CACHE / f"{split}.npz")
     return out
 
 
@@ -165,7 +128,7 @@ class Understanding:
     """Normaliser, engineering model g_ij (ridge, per engineering edge type) and learned couplings."""
 
     def fit(self, raw_benign: np.ndarray, raw_attack: np.ndarray, lam: float = 1.0):
-        X = raw_benign.astype(np.float32)  # [n, T, S, 27]
+        X = raw_benign.astype(np.float32)  # [n, T, S, 33]
         self.mu = X.mean((0, 1, 2))
         self.sd = X.std((0, 1, 2)) + 1e-3
         self.dsd = np.diff(X, axis=1).std((0, 1, 2)) + 1e-3

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from aurora_common.criticality import critical
 from ml import schema
 from ml.synthetic import constellation
 from ml.synthetic.scenarios import EpisodeSpec
@@ -663,7 +664,7 @@ class SyntheticTwin:
             100 * self.soc < crit["soc_min_pct"],
             theta > crit["theta_max_deg"],
         )
-        self.failed[t] = f_t | f_s | f_a
+        self.failed[t] = critical(self.temp, 100 * self.soc, theta, crit)
         self.fail_rule[t] = np.where(
             f_t, "T_bus>T_max", np.where(f_s, "SOC<SOC_min", np.where(f_a, "att_err>theta_max", ""))
         )

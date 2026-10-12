@@ -15,7 +15,7 @@ from tests.cassandra.loop import T0, Loop
 
 def test_uncertainty_gate():
     s = Safety(config.load(), 12)
-    assert s.gate(None) is None  # single model: gate inactive, never "certain"
+    assert s.gate(None) is True  # unknown uncertainty restricts high-impact actions
     assert s.gate(0.10) is False
     assert s.gate(0.50) is True
 
@@ -116,7 +116,7 @@ def test_a1_is_contained_before_the_limit_and_healed(a1_run):
     seq = [s for _, s in lp.states["E"]]
     assert seq[0] == "flagged" and seq[-1] == "nominal"
     (act,) = [a for a in lp.actions if a.target == "E" and a.action != "none"]
-    assert act.action in ("isolate_subsystem", "safe_mode", "quarantine")
+    assert act.action in ("cut_heater", "safe_mode", "quarantine")
     assert max(lp.true_temp["E"]) < 45.0, "E reached its critical temperature"
     i_act = round(act.t - T0) - 1
     assert lp.true_temp["E"][i_act] < 43.0  # acted with margin, not at the limit
@@ -125,12 +125,12 @@ def test_a1_is_contained_before_the_limit_and_healed(a1_run):
 
 
 def test_a1_decision_is_explained_with_cause_and_sparta(a1_run):
-    (dec,) = [e for e in a1_run.events if e.kind == "decision" and e.sat == "E" and "action:" in e.text]
+    (dec,) = [e for e in a1_run.events if e.kind == "gated" and e.sat == "E" and "action:" in e.text]
     assert "heater latched ON (origin=ground" in dec.text and "IA-0009" in dec.sparta
-    assert "uncertainty gate inactive (single model)" in dec.text  # trajectory: q is null (D4)
+    assert "uncertainty UNKNOWN" in dec.text  # trajectory: q is null (D4)
     (act,) = [a for a in a1_run.actions if a.target == "E"]
     out = json.loads(S.dump(act))
-    assert out["gated"] is None and out["q"] is None and len(out["alternatives"]) >= 2
+    assert out["gated"] is True and out["q"] is None and len(out["alternatives"]) >= 2
 
 
 def test_a1_leaves_every_other_satellite_alone(a1_run):

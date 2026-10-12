@@ -29,6 +29,8 @@ import time
 import uuid
 from pathlib import Path
 
+from aurora_common.criticality import RULES, violated
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np  # noqa: E402
@@ -176,11 +178,7 @@ class Recorder:
     def _critical(self, tel: pd.DataFrame, t0: float) -> dict[str, tuple[float, str]]:
         """First crossing per satellite in the recorded telemetry: sat -> (seconds since t0, rule)."""
         out: dict[str, tuple[float, str]] = {}
-        rules = (
-            ("thermal", "temp_c", "t_max_c", 1, "T_bus>T_max"),
-            ("eps", "soc_pct", "soc_min_pct", -1, "SOC<SOC_min"),
-            ("adcs", "att_err_deg", "theta_max_deg", 1, "att_err>theta_max"),
-        )
+        rules = RULES
         for sat, g in tel.groupby("sat"):
             lim = self.limits.get(sat, {})
             for sub, col, key, sign, rule in rules:
@@ -188,7 +186,7 @@ class Recorder:
                 if limit is None or col not in g:
                     continue
                 x = g[g["sub"] == sub][["t", col]].dropna()
-                hit = x[(x[col] - limit) * sign > 0] if sign > 0 else x[(limit - x[col]) > 0]
+                hit = x[violated(x[col].abs() if col == "att_err_deg" else x[col], limit, sign)]
                 if len(hit):
                     t = float(hit.t.iloc[0]) - t0
                     if sat not in out or t < out[sat][0]:

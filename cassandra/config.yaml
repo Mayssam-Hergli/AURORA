@@ -67,9 +67,9 @@ sandbox:
   shadow_seed: 0
   predict_geometry: true          # shadow propagates ISL geometry from the orbit phase matching the observed links
   geometry_max_mismatch: 4        # more mismatching link pairs than this: hold the observed geometry instead
-  candidates: [none, safe_mode, block_source, isolate_subsystem, quarantine]
-  weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3, w_q: 0.5}     # J(a) weights (eval.yaml response.weights)
-  cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, isolate_subsystem: 0.25, quarantine: 0.4}
+  candidates: [none, safe_mode, block_source, cut_heater, quarantine]
+  weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3}     # J(a) weights (eval.yaml response.weights)
+  cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, cut_heater: 0.25, quarantine: 0.4}
   board_model: {ambient_c: 25.0, heat_c_s: 1.5, cool_per_s: 0.263, ceiling_c: 95.0}  # ESP8266 firmware
 
 act:

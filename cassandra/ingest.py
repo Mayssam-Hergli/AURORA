@@ -45,6 +45,9 @@ class Ingest:
         self.clock_warn_every = float(c["clock_warn_every_s"])
         self.max_jump_s = float(c["max_jump_s"])
 
+        self.rejected_observations = deque(maxlen=256)
+        self.observation_history = defaultdict(lambda: deque(maxlen=4096))
+        self.link_history = defaultdict(lambda: deque(maxlen=4096))
         self.obs: dict[tuple[str, str], _Obs] = {}
         self.last_seq: dict[tuple[str, str], int] = {}
         self.sat_src: dict[str, str] = {}
@@ -82,6 +85,7 @@ class Ingest:
                 "range_km": msg.range_km,
                 "t": msg.t,
             }
+            self.link_history[msg.a, msg.b].append(dict(self.links[msg.a, msg.b]))
             self._advance("twin", msg.t, wall)
             self.stats["link"] += 1
 
@@ -93,6 +97,30 @@ class Ingest:
         key = (m.sat, m.sub)
         self.stats["tm"] += 1
         if m.sat not in self.profiles:
+            return
+        want = self.profiles[m.sat].kind
+        if m.src != want and (m.sat, m.src) not in self.bad_src_seen:
+            self.bad_src_seen.add((m.sat, m.src))
+            self.notes.append(
+                Note(
+                    "provenance",
+                    "warning",
+                    f"[{m.sat}] telemetry src={m.src!r} but this satellite is configured as {want!r}",
+                    sat=m.sat,
+                    sub=m.sub,
+                    data={
+                        "src": m.src,
+                        "expected": want,
+                        "provenance_status": "SOURCE_MISMATCH",
+                        "assurance": "LOW_ASSURANCE",
+                    },
+                )
+            )
+        if m.src != want:
+            self.rejected_observations.append(m)
+            if self.open_tick is None:
+                self.open_tick = math.floor(wall)
+                self.last_progress_wall = wall
             return
         prev = self.last_seq.get(key)
         if prev is not None:
@@ -106,20 +134,8 @@ class Ingest:
             self.late += 1  # still used: it updates the held value for the next tick
         if old is None or m.t >= old.t:
             self.obs[key] = _Obs(dict(m.fields), m.t, m.src, tuple(m.emulated or ()))
+            self.observation_history[key].append(self.obs[key])
         self.sat_src[m.sat] = m.src
-        want = self.profiles[m.sat].kind
-        if m.src != want and (m.sat, m.src) not in self.bad_src_seen:
-            self.bad_src_seen.add((m.sat, m.src))
-            self.notes.append(
-                Note(
-                    "provenance",
-                    "warning",
-                    f"[{m.sat}] telemetry src={m.src!r} but this satellite is configured as {want!r}",
-                    sat=m.sat,
-                    sub=m.sub,
-                    data={"src": m.src, "expected": want},
-                )
-            )
         kind = "hw" if m.src == "hw" else "twin"
         self.offsets[kind].append(m.t - wall)
         self.offset_sample_wall[kind] = wall
@@ -181,7 +197,12 @@ class Ingest:
         self.notes = []
         for sat, prof in self.profiles.items():
             for sub in prof.subs:
-                o = self.obs.get((sat, sub))
+                history = self.observation_history[sat, sub]
+                eligible = [o for o in history if o.t < end]
+                o = max(eligible, key=lambda item: item.t) if eligible else None
+                self.observation_history[sat, sub] = deque(
+                    [item for item in history if item.t >= end or item is o], maxlen=4096
+                )
                 age = math.inf if o is None else end - o.t
                 ages.setdefault(sat, {})[sub] = age
                 key = (sat, sub)
@@ -244,12 +265,16 @@ class Ingest:
             stale=stale,
             src=dict(self.sat_src),
             emulated=emulated,
-            links=dict(self.links),
-            tcs=self.tcs,
+            links={
+                pair: max((v for v in history if v["t"] < end), key=lambda v: v["t"])
+                for pair, history in self.link_history.items()
+                if any(v["t"] < end for v in history)
+            },
+            tcs=[tc for tc in self.tcs if tc.t < end],
             notes=notes,
             closed_by=by,
         )
-        self.tcs = []
+        self.tcs = [tc for tc in self.tcs if tc.t >= end]
         self.open_tick = k + 1
         self.stats[f"ticks_{by}"] += 1
         return tick

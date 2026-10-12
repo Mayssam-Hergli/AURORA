@@ -163,7 +163,7 @@ def check_contained_and_healed(seen: dict) -> list:
 def test_a1_flagged_contained_and_healed_through_the_broker():
     seen = live_run([["--scenario", "A1", "--target", "E"]])
     acts = check_contained_and_healed(seen)
-    assert acts[0].action in ("isolate_subsystem", "safe_mode", "quarantine")
+    assert acts[0].action in ("cut_heater", "safe_mode", "quarantine")
 
 
 def test_a1_reassert_escalates_beyond_isolation_and_heals_after_stop():

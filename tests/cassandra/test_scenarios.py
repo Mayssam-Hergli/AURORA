@@ -35,7 +35,9 @@ def test_b1_masking_is_caught_by_the_monitor_within_20_s(b1):
 
 
 def test_b1_forecasts_on_the_estimate_contains_and_heals_after_stop(b1):
-    dec = next(e for e in b1.events if e.kind == "decision" and e.sat == "E" and "action:" in e.text)
+    dec = next(
+        e for e in b1.events if e.kind in ("decision", "gated") and e.sat == "E" and "action:" in e.text
+    )
     assert "estimated: reported value untrusted" in dec.text and "DE-0002" in dec.sparta
     acts = [a for a in b1.actions if a.target == "E" and a.action != "none"]
     assert acts and max(b1.true_temp["E"]) < 45.0
@@ -63,7 +65,11 @@ def test_c1_every_latched_victim_is_contained_before_its_limit(c1):
     assert victims, "relayed heater commands should force containments"
     for v in victims:
         assert max(c1.true_temp[v]) < 45.0, v
-        dec = next(e for e in c1.events if e.sat == v and e.kind == "decision" and "origin=isl:A" in e.text)
+        dec = next(
+            e
+            for e in c1.events
+            if e.sat == v and e.kind in ("decision", "gated") and "origin=isl:A" in e.text
+        )
         assert "IA-0003" in dec.sparta
     for v in victims:
         assert [s for _, s in c1.states[v]][-1] == "nominal"  # healed once the relays stopped
@@ -83,10 +89,10 @@ def test_f5_stuck_heater_escalates_without_quarantine_and_asks_for_ground():
     lp.plant.inject_fault("F5", "E")
     lp.run(400)
     acts = [a.action for a in lp.actions if a.target == "E" and a.action != "none"]
-    assert "quarantine" not in acts and acts[:2] == ["isolate_subsystem", "safe_mode"]
+    assert "quarantine" not in acts and acts[:2] == ["cut_heater", "safe_mode"]
     assert any("ground action required" in e.text and "possible hardware fault" in e.text for e in lp.events)
     for e in lp.events:
-        if e.kind == "decision" and e.sat == "E" and e.sparta:
+        if e.kind in ("decision", "gated") and e.sat == "E" and e.sparta:
             assert not [s for s in e.sparta if s.startswith("IA-")], e.text  # no attack attributed
 
 

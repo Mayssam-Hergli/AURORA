@@ -76,7 +76,7 @@ def test_m2_closed_loop_plans_without_the_attackers_queue():
     best, table, _ = plan(tw, fc, "B", tw.t, rc, 0, tw.S)
     assert len(tw.queue) == len(queued_before) + 7  # the real twin keeps its future
     none = next(r for r in table if r["action"] == "none")
-    assert none["Q"] is None and best["gated"] is None  # one (fallback) model: D4
+    assert none["Q"] is None and best["gated"] is True  # one (fallback) model: D4
     assert none["R"] < 1.0  # the planner did not see the queued heater commands heat B
 
 

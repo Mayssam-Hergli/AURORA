@@ -15,5 +15,5 @@ response:                    # closed loop (CONTEXT 2, 5.4)
   theta_uncert: 0.35
   isolation_budget: 0.25
   heal_steps: 10
-  weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3, w_q: 0.5}
-  cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, isolate_subsystem: 0.25, quarantine_reroute: 0.4}
+  weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3}
+  cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, cut_heater: 0.25, quarantine_reroute: 0.4}

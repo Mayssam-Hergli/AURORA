@@ -3,7 +3,7 @@
 All return a score per (episode, tick, satellite) computed from reported telemetry only:
     threshold   static limits: max proximity of temp_c, soc_pct, att_err_deg to their critical limits
     trajectory  Phase-2 prototype: 8-sample least-squares slope -> time to limit t_c, clip(1 - t_c / H)
-    lstm_ae     LSTM autoencoder on 30 s windows of one satellite's 27 channels (clean training data)
+    lstm_ae     LSTM autoencoder on 30 s windows of one satellite's 33 channels (clean training data)
     gdn         Graph Deviation Network (Deng & Hooi, AAAI 2021): learned sensor graph (top-k cosine
                 similarity of sensor embeddings), graph-attention forecast of each sensor, deviation
                 score = max over sensors of the robust-normalised forecast error
@@ -24,7 +24,7 @@ CH = {c: i for i, c in enumerate(G.FLAT)}
 
 
 def threshold_score(raw: np.ndarray, crit: dict, t_ref=20.0, soc_ref=90.0) -> np.ndarray:
-    """raw [n, T, S, 27] -> [n, T, S]."""
+    """raw [n, T, S, 33] -> [n, T, S]."""
     t = (raw[..., CH["temp_c"]] - t_ref) / (crit["t_max_c"] - t_ref)
     s = (soc_ref - raw[..., CH["soc_pct"]]) / (soc_ref - crit["soc_min_pct"])
     a = np.abs(raw[..., CH["att_err_deg"]]) / crit["theta_max_deg"]

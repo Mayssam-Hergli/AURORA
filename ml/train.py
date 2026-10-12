@@ -24,7 +24,16 @@ from ml import graph as G
 from ml.dataset import make_batch, sample_ticks
 from ml.model import Forecaster
 
-VARIANTS = ["full", "no_eng", "unconstrained", "no_residual"]
+VARIANTS = [
+    "full",
+    "no_eng",
+    "unconstrained",
+    "no_residual",
+    "no_sparta",
+    "no_coupling",
+    "temporal",
+    "telemetry_only",
+]
 
 
 def understanding_path():
@@ -44,15 +53,20 @@ def fit_understanding():
 
 def build_model(variant: str, mc: dict, n_sats: int):
     und = features.Understanding().load(understanding_path())
+    if variant == "no_coupling":
+        und.couplings = {}
     g = G.build(n_sats, variant)
-    return Forecaster(
+    model = Forecaster(
         und,
         g,
         hid=mc["hidden"],
-        rounds=mc["rounds"],
+        rounds=0 if variant == "temporal" else mc["rounds"],
         edge_hid=mc["edge_hidden"],
         use_residual=variant != "no_residual",
     )
+
+    model.telemetry_only = variant == "telemetry_only"
+    return model
 
 
 def loss_fn(out, b, mc):
@@ -143,7 +157,15 @@ def train_job(variant: str, seed: int):
             if bad >= mc["patience"]:
                 break
     torch.save(
-        {"state": best_state, "variant": variant, "seed": seed, "model_cfg": mc, "n_sats": n_sats},
+        {
+            "state": best_state,
+            "variant": variant,
+            "seed": seed,
+            "model_cfg": mc,
+            "n_sats": n_sats,
+            "channels": G.FLAT,
+            "feature_schema": "causal-v2",
+        },
         config.MODELS / f"{name}.pt",
     )
     (config.MODELS / f"{name}.json").write_text(json.dumps(hist, indent=1))
@@ -172,6 +194,9 @@ def train_all(parallel: int):
                 )
             )
         time.sleep(5)
+        failed = [p.returncode for p in running if p.poll() not in (None, 0)]
+        if failed:
+            raise RuntimeError(f"training jobs failed: {failed}; inspect results/logs/*.err")
         running = [p for p in running if p.poll() is None]
     print("all models trained")
     calibrate()
@@ -198,6 +223,8 @@ def calibrate() -> dict:
 
 def load_model(name: str):
     ck = torch.load(config.MODELS / f"{name}.pt", weights_only=False)
+    if ck.get("channels") != G.FLAT or ck.get("feature_schema") != "causal-v2":
+        raise ValueError(f"{name}: incompatible feature schema; retrain causal 33-channel models")
     model = build_model(ck["variant"], ck["model_cfg"], ck["n_sats"])
     model.load_state_dict(ck["state"])
     return model.eval()

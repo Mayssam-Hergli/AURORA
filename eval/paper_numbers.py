@@ -24,7 +24,7 @@ DOCS = [
 ]
 README = config.ROOT / "README.md"
 
-SPLITS = {"test_id": "ID", "test_ood": "OOD", "test_real": "Real"}
+SPLITS = {"test_id": "ID", "test_ood": "OOD", "test_real": "Real", "test_hard": "Hard"}
 METHODS = {
     "ensemble": "Ens",
     "single": "Single",
@@ -35,7 +35,11 @@ METHODS = {
     "trajectory": "Traj",
     "lstm_ae": "Ae",
     "gdn": "Gdn",
-    "ensemble@act": "Act",
+    "ensemble@0.85": "Act",
+    "no_sparta": "NoSparta",
+    "no_coupling": "NoCoupling",
+    "temporal": "Temporal",
+    "telemetry_only": "TelemetryOnly",
     "ensemble@10": "EnsHTen",
     "ensemble@30": "EnsHThirty",
     "ensemble@60": "EnsHSixty",
@@ -180,7 +184,7 @@ def collect() -> Numbers:
         for a, k in (
             ("safe_mode", "rClSafe"),
             ("block_source", "rClBlock"),
-            ("isolate_subsystem", "rClIso"),
+            ("cut_heater", "rClIso"),
             ("quarantine_reroute", "rClReroute"),
         ):
             N.put(k, acts.get(a, 0), "{:d}")
@@ -325,102 +329,30 @@ def write_tex(path, N: Numbers) -> list[str]:
 
 
 def readme_block(N: Numbers) -> str:
-    met = _load(EV / "metrics.json")
-    if not met:
-        return "_Results not generated yet: run `make all` (see How to run)._"
-    rows = [
-        ("CASSANDRA (5-model ensemble)", "Ens"),
-        ("Single model", "Single"),
-        ("GDN", "Gdn"),
-        ("LSTM autoencoder", "Ae"),
-        ("Phase-2 trajectory forecaster", "Traj"),
-        ("Static thresholds", "Thr"),
-    ]
-    L = [
-        "Synthetic 12-satellite constellation episodes (simulation, not flight data). Threshold of every "
-        "method set at 0.1 % false-positive rate on validation clean + fault episodes and applied unchanged "
-        "to the test splits. Lead = T_critical - T_alert, median over detected failing satellites.",
+    lines = [
+        "Fresh hardened run; values generated from results/eval/metrics.json.",
         "",
-        "| Method | In-distribution lead / recall | Held-out families lead / recall "
-        "| OPS-SAT noise lead / recall |",
-        "|---|---|---|---|",
+        "| Split | Recall | Median lead (s) | Realized benign-step FPR (%) |",
+        "|---|---:|---:|---:|",
     ]
-    for name, k in rows:
-        cells = []
-        for sk in SPLITS.values():
-            lead, rec = N.get(f"r{k}{sk}Lead"), N.get(f"r{k}{sk}Rec")
-            cells.append(f"{lead} s / {rec}" if lead is not None else "n/a")
-        L.append(f"| {name} | " + " | ".join(cells) + " |")
-    g = N.get
-    L += [
-        "",
-        f"- **Failing satellites** per split: {g('rNfailID')} / {g('rNfailOOD')} / {g('rNfailReal')}. "
-        f"Realised false-positive rate of CASSANDRA on test benign steps: {g('rEnsIDVfpr')} / "
-        f"{g('rEnsOODVfpr')} / {g('rEnsRealVfpr')} % (target 0.10 %, fixed on validation). "
-        f"Alarm events per satellite-hour (in-distribution): CASSANDRA {g('rEnsIDFah')}, "
-        f"GDN {g('rGdnIDFah')}.",
-        f"- **Telemetry masking** (B1/B2): CASSANDRA detects {g('rEnsIDScenBRec')} of masked failures "
-        f"({g('rEnsIDScenBLead')} s ahead); static thresholds {g('rThrIDScenBRec')}, the Phase-2 "
-        f"forecaster {g('rTrajIDScenBRec')}: they read the forged channel.",
-        f"- **Action threshold** (P >= 0.85, what the response engine uses): {g('rActIDRec')} of failing "
-        f"satellites flagged a median {g('rActIDLead')} s before failure, false-positive rate "
-        f"{g('rActIDVfpr')} %.",
-        f"- **Ranking** of the 60 s forecast: AUROC {g('rEnsIDAuroc')}, AUPRC {g('rEnsIDAuprc')} "
-        f"(static thresholds {g('rThrIDAuroc')} / {g('rThrIDAuprc')}).",
-        f"- **Stress test** (origin spoofed / no telecommands at all): median lead {g('rStressOrigLead')} "
-        f"-> {g('rStressSpoofLead')} -> {g('rStressNoCmdLead')} s, recall {g('rStressNoCmdRec')} "
-        "(in-distribution attack episodes). The warning does not rest on the command channel; in this "
-        "generator an attack's actuation is visible in housekeeping telemetry unless masked, so this is "
-        "an upper bound for stealthier actuation.",
-        f"- **Ablations**: without E_eng {g('rNoEngIDLead')} s, unconstrained {g('rUnconIDLead')} s, "
-        f"without residuals {g('rNoResIDLead')} s vs {g('rEnsIDLead')} s, all at full recall: the "
-        "detection metrics saturate on this benchmark. Validation loss does separate them: "
-        f"{g('rValFullMin')}-{g('rValFullMax')} for the full models, {g('rValNoEng')} without E_eng, "
-        f"{g('rValNoRes')} without residuals (next step: stealthier actuation).",
-        f"- **Calibration** (temperature {g('rTemp')}): ECE of P(F < t + 60 s) = {g('rEceIDCal')} / "
-        f"{g('rEceOODCal')} / {g('rEceRealCal')} (dominated by confident negatives).",
-        f"- **Other heads**: next affected subsystem top-1 {g('rNextIDTop')} % in distribution but "
-        f"{g('rNextRealTop')} % on the real-noise split (which also has a different attack mix); "
-        f"malicious-vs-fault AUROC {g('rMalIDAuroc')} / "
-        f"{g('rMalOODAuroc')} / {g('rMalRealAuroc')}.",
-    ]
-    if "rClFailWithout" in N:
-        L.append(
-            f"- **Closed loop** ({N['rClEp']} test episodes): {N['rClAverted']} of {N['rClFailWithout']} "
-            f"satellite failures averted, {N['rClNewFail']} new failures, {N['rClFalse']} false "
-            f"containments, availability {N['rClAvail']} %. Battery drains (A3): {g('rClAvertAThree')} of "
-            f"{g('rClFailAThree')} averted. A plan "
-            f"takes a median {N['rLatPlan']} ms on a laptop ({g('rLatPlanRatio')} times the 150 ms "
-            "budget). The sandbox uses the "
-            "simulator as its model, so this is an upper bound."
-        )
-    if "rRobBLead" in N:
-        L.append(
-            f"- **PGD** on every forgeable housekeeping channel ({N['rRobN']} attacked satellites, "
-            f"eps = 0 / 0.25 / 0.5 / 1 nominal std): recall {N['rRobZeroRec']} / {N['rRobARec']} / "
-            f"{N['rRobBRec']} / {N['rRobCRec']} (one satellite missed at eps 0.25), median lead "
-            f"{N['rRobZeroLead']} -> {N['rRobCLead']} s, mean ensemble spread {N['rRobZeroQ']} -> "
-            f"{N['rRobCQ']}. The heater state is not forged, and this adversary minimises the summed "
-            "forecast rather than the first alert time, so a stronger attack is untested."
-        )
-    if "rLatStep" in N:
-        L.append(
-            f"- Latency: {N['rLatStep']} ms per tick for the 5-model ensemble on one x86 core "
-            f"(the Raspberry Pi measurement is still to do)."
-        )
-    L += [
-        "",
-        "Full tables are written to `results/eval/RESULTS.md` by `python -m eval.harness run` "
-        "(not committed). Figures: [`docs/figures/v1/`](docs/figures/v1/).",
-    ]
-    for fig, alt in (
-        ("fig_lead_time", "Warning lead time and recall of every method"),
-        ("fig_example_masking", "Masked-telemetry episode and the forecast at four horizons"),
-        ("fig_by_type", "CASSANDRA by episode type"),
+    for split, label in (
+        ("ID", "Synthetic ID"),
+        ("OOD", "Synthetic OOD"),
+        ("Real", "Synthetic + OPS-SAT noise/gaps"),
+        ("Hard", "Matched-origin hard set"),
     ):
-        if (config.FIGURES / "v1" / f"{fig}.png").exists():
-            L += ["", f"![{alt}](docs/figures/v1/{fig}.png)"]
-    return "\n".join(L)
+        p = "rEns" + split
+        lines.append(
+            f"| {label} | {N.get(p+'Rec', 'n/a')} | {N.get(p+'Lead', 'n/a')} | " f"{N.get(p+'Vfpr', 'n/a')} |"
+        )
+    lines += [
+        "",
+        "Thresholds are selected on validation; the 0.1% target is not a guarantee on test.",
+        "The fixed 0.85 operating point is forecast evaluation, not the runtime policy.",
+        "See docs/HARDENING_REPORT.md and results/FINAL_RUN_MANIFEST.json for paired runtime results, "
+        "confidence intervals, provenance and limitations.",
+    ]
+    return "\n".join(lines)
 
 
 def write_readme(N: Numbers):

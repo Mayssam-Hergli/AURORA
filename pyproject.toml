@@ -13,6 +13,7 @@ dependencies = [
   "scipy>=1.11",
   "torch>=2.2",
   "matplotlib>=3.8",
+  "paho-mqtt>=2.1",
 ]
 
 [project.optional-dependencies]
@@ -35,3 +36,15 @@ ignore = ["E731", "B905"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["aurora_common*", "cassandra*", "ml*", "eval*", "twin*", "hardware*", "attacks*", "scripts*"]
+
+[tool.setuptools.package-data]
+ml = ["configs/*.yaml"]
+eval = ["configs/*.yaml"]
+cassandra = ["config.yaml"]

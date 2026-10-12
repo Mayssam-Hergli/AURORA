@@ -36,7 +36,7 @@ Cmd = Literal["HEATER", "SAFE_MODE", "SET_MODE", "ISL_ENABLE", "PING"]
 SetMode = Literal["NOMINAL", "SAFE", "SCIENCE", "IDLE", "WHEEL_TEST"]
 ObcMode = Literal["NOMINAL", "SAFE", "QUARANTINED"]
 NodeState = Literal["nominal", "flagged", "quarantined", "safe_hold"]
-ActionName = Literal["none", "safe_mode", "block_source", "isolate_subsystem", "quarantine"]
+ActionName = Literal["none", "safe_mode", "block_source", "cut_heater", "quarantine"]
 Flag = Annotated[int, Field(ge=0, le=1)]
 
 SET_MODES = SetMode.__args__

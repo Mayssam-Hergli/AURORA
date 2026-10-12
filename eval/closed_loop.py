@@ -1,13 +1,15 @@
-"""Closed loop on the twin: forecast -> simulate -> act -> verify (CONTEXT 2, 5.4, 5.8 "response").
+"""Legacy simulator-state reference (not runtime-policy evidence). Use eval.runtime_policy.
+
+Closed loop on the twin: forecast -> simulate -> act -> verify (CONTEXT 2, 5.4, 5.8 "response").
 
 This is the ML side's reference implementation used to measure response effectiveness; the
 production sandbox / safety / executor modules belong to cassandra/ (core owner). It consumes
 only Section 6.2 messages (twin.messages_at), never ground truth; ground truth is read afterwards
 to score the run.
 
-Actions (CONTEXT 5.4): none, safe_mode (CM0042), block_source (CM0032), isolate_subsystem
+Actions (CONTEXT 5.4): none, safe_mode (CM0042), block_source (CM0032), cut_heater
 (cut the heater / payload rail), quarantine_reroute (CM0070: disable the node's ISLs; traffic uses
-the remaining feasible links). J(a) = w_r R + w_m (1 - U) + w_c C + w_q Q, with R the ensemble
+the remaining feasible links). J(a) = w_r R + w_m (1 - U) + w_c C , with R the ensemble
 P(F < t + 60 s) after a rollout, U the fraction of the constellation in service, Q the ensemble
 standard deviation. Gates: Q > theta_uncert -> safe hold + alert ground; quarantines limited to
 25 % of the constellation per orbital period.
@@ -30,7 +32,7 @@ from ml.synthetic.constellation import orbital_period_s
 from ml.synthetic.engine import MODE_NOMINAL, SyntheticTwin
 from ml.synthetic.scenarios import EpisodeSpec
 
-ACTIONS = ["none", "safe_mode", "block_source", "isolate_subsystem", "quarantine_reroute"]
+ACTIONS = ["none", "safe_mode", "block_source", "cut_heater", "quarantine_reroute"]
 
 
 def apply_action(twin: SyntheticTwin, sat: str, action: str, t: int):
@@ -48,9 +50,8 @@ def apply_action(twin: SyntheticTwin, sat: str, action: str, t: int):
         }
         for o in recent:
             twin.block_source(s, o)  # later commands from these origins are rejected when they arrive
-    elif action == "isolate_subsystem":
+    elif action == "cut_heater":
         twin.isolate_heater(s)
-        core("SET_MODE", {"mode": "IDLE"})
     elif action == "quarantine_reroute":
         core("SAFE_MODE")  # QUARANTINED is a core state, not a commandable mode (D3)
         for peer in twin.sats:
@@ -112,17 +113,12 @@ def plan(twin, fc, sat, t, rc, quarantines_this_orbit, n_sats):
         Q = mine["p_std"]["60"] if mine.get("p_std") else None  # D4: no Q from a single model
         U = in_service(twin)
         w = rc["weights"]
-        J = (
-            w["w_r"] * R
-            + w["w_m"] * (1 - U)
-            + w["w_c"] * rc["cost"][a]
-            + (w["w_q"] * Q if Q is not None else 0.0)
-        )
+        J = w["w_r"] * R + w["w_m"] * (1 - U) + w["w_c"] * rc["cost"][a]
         table.append(dict(action=a, R=R, U=U, Q=Q, J=J))
     twin.restore(snap)
     fc.frames, fc.buffer = fc_state
     best = min(table, key=lambda r: r["J"])
-    best["gated"] = None if best["Q"] is None else best["Q"] > rc["theta_uncert"]
+    best["gated"] = best["Q"] is None or not np.isfinite(best["Q"]) or best["Q"] > rc["theta_uncert"]
     return best, table, (time.perf_counter() - t0) * 1000
 
 

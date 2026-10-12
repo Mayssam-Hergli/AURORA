@@ -8,7 +8,7 @@ P below is P(F < t + horizon_s), horizon_s = 60 by default (config explains why 
   Safety then applies the uncertainty gate (q > theta: safe hold + alert ground instead of
   isolating; q null: gate inactive, D4) and the isolation budget (quarantine offered only while
   quarantines in the current orbit window stay within 25 % of the constellation).
-- quarantine -> state quarantined; safe_mode -> safe_hold; isolate_subsystem / block_source ->
+- quarantine -> state quarantined; safe_mode -> safe_hold; cut_heater / block_source ->
   the satellite stays in service, flagged, until the verifier clears it.
 - Verifier: heal when temp_c is trusted and below heal_below_c and P < calm_p for calm_ticks
   consecutive ticks: SET_MODE NOMINAL, re-enable the links the core cut, state nominal.
@@ -19,7 +19,7 @@ P below is P(F < t + horizon_s), horizon_s = 60 by default (config explains why 
   Healing waits until it has gone quiet (no copy for threat_quiet_factor x its period + 5 s).
 - Escalation: when a containment does not hold (the heater is ON again after a cut, or P stays
   >= plan_p for escalate_after_s), the satellite is re-planned with J over the stronger actions only:
-  isolate_subsystem / block_source -> safe_mode -> quarantine (+ reroute). Each step is explained;
+  cut_heater / block_source -> safe_mode -> quarantine (+ reroute). Each step is explained;
   when quarantine does not hold either, the core says so and asks for ground action. Escalation
   never reaches quarantine when no cyber cause was observed (no hazardous command, no suspicious
   origin): a hardware fault does not propagate, so it ends in safe mode and a call for ground action.
@@ -42,13 +42,15 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 from aurora_common import schemas as S
+from aurora_common.criticality import observed_safe
 from cassandra import explain
+from cassandra.actions import ACTIONS as ACTION_SPECS
 from cassandra.forecast import ForecastResult
 from cassandra.monitor import MonitorEvent
 from cassandra.sandbox import Candidate, Sandbox, Score, Threat
 from cassandra.world import SatProfile, WorldTick
 
-LADDER = {"block_source": 0, "isolate_subsystem": 0, "safe_mode": 1, "quarantine": 2}
+LADDER = {"block_source": 0, "cut_heater": 0, "safe_mode": 1, "quarantine": 2}
 HAZARD_MODES = ("WHEEL_TEST",)
 
 
@@ -81,9 +83,14 @@ class Safety:
         self.window_s = float(a["orbit_period_s"]) / float(a["orbit_speedup"])
         self.quarantines: deque[float] = deque()
 
-    def gate(self, q: float | None) -> bool | None:
-        """True: too uncertain to isolate autonomously. None: Q unavailable, gate inactive (D4)."""
-        return None if q is None else q > self.theta
+    def uncertainty_state(self, q: float | None) -> str:
+        if q is None or not math.isfinite(q) or q < 0:
+            return "UNKNOWN"
+        return "KNOWN_HIGH" if q > self.theta else "KNOWN_LOW"
+
+    def gate(self, q: float | None) -> bool:
+        """True: high-impact isolation withheld for unknown or high uncertainty."""
+        return self.uncertainty_state(q) != "KNOWN_LOW"
 
     def budget_ok(self, t: float) -> bool:
         while self.quarantines and t - self.quarantines[0] >= self.window_s:
@@ -153,7 +160,8 @@ class Verifier:
         """True once the satellite has been calm for calm_ticks consecutive ticks."""
         th = tick.fresh(sat, "thermal")
         calm = (
-            f is not None
+            observed_safe(tick.values.get(sat, {}), prof)
+            and f is not None
             and not f.warming_up
             and f.p(self.horizon) < self.calm_p
             and not untrusted
@@ -413,12 +421,7 @@ class Responder:
         """Why the current containment is failing ('' = it holds)."""
         action, since = self.contained[sat], self.contained_at.get(sat, now)
         th = tick.fresh(sat, "thermal")
-        if (
-            action in ("isolate_subsystem", "safe_mode", "quarantine")
-            and th
-            and th["heater_on"]
-            and now - since > 2
-        ):
+        if action in ("cut_heater", "safe_mode", "quarantine") and th and th["heater_on"] and now - since > 2:
             return f"heater ON again {now - since:.0f} s after {action}"
         if p >= self.plan_p and now - since >= self.escalate_after:
             return f"P(F<{self.horizon}s)={p:.2f} still >= {self.plan_p} {now - since:.0f} s after {action}"
@@ -456,6 +459,8 @@ class Responder:
         self.failing[sat] = 0
         level = LADDER.get(self.contained[sat], 0)
         stronger = tuple(a for a, lv in LADDER.items() if lv > level and a != "block_source")
+        if self.safety.gate(f.q if f else None):
+            stronger = tuple(a for a in stronger if ACTION_SPECS[a].allow_unknown)
         budget_ok = self.safety.budget_ok(now)
         if not budget_ok:
             stronger = tuple(a for a in stronger if a != "quarantine")
@@ -479,7 +484,7 @@ class Responder:
         gated = self.safety.gate(f.q)
         chosen = ranked[0]
         if gated:
-            chosen = next((s for s in ranked if s.action == "safe_mode"), chosen)
+            chosen = next((s for s in ranked if s.action in ("none", "cut_heater", "safe_mode")), chosen)
         action, event = explain.decision(
             now,
             sat,
@@ -506,6 +511,8 @@ class Responder:
         budget_ok = self.safety.budget_ok(now)
         t0 = _time.perf_counter()
         allowed = ("none", "safe_mode", "quarantine") if source else None
+        if self.safety.gate(f.q):
+            allowed = ("none",) if source else ("none", "cut_heater", "safe_mode")
         disabled = [f"{a}-{b}" for v in self.executor.cut.values() for a, b in v]
         ranked = self.sandbox.plan(
             tick,
@@ -527,7 +534,7 @@ class Responder:
         budget_note = "" if budget_ok else " · isolation budget reached (25 %/orbit): quarantine not offered"
         if gated:
             # CONTEXT 2 safety gate: do not act autonomously; safe hold and alert ground
-            chosen = next((s for s in ranked if s.action == "safe_mode"), chosen)
+            chosen = next((s for s in ranked if s.action in ("none", "cut_heater", "safe_mode")), chosen)
         action, event = explain.decision(
             now,
             sat,

@@ -228,7 +228,14 @@ class EnsembleAdapter:
             if sat not in fb.idx:
                 continue
             for sub, fields in subs.items():
-                fb.on_telemetry({"sat": sat, "sub": sub, "fields": fields})
+                fb.on_telemetry(
+                    {
+                        "sat": sat,
+                        "sub": sub,
+                        "fields": fields,
+                        "t": tick.t + 1 - tick.age_s.get(sat, {}).get(sub, 1.0),
+                    }
+                )
         for tc in tick.tcs:
             if tc.sat in fb.idx:
                 fb.on_command({"sat": tc.sat, "origin": tc.origin, "cmd": tc.cmd, "args": dict(tc.args)})

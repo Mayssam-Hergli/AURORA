@@ -21,7 +21,7 @@ from cassandra.world import Note
 COUNTERMEASURES = {
     "none": ("CM0032",),
     "safe_mode": ("CM0032", "CM0042"),
-    "isolate_subsystem": ("CM0032", "CM0042"),
+    "cut_heater": ("CM0032", "CM0042"),
     "block_source": ("CM0032", "CM0042"),
     "quarantine": ("CM0032", "CM0042", "CM0070"),
 }
@@ -80,10 +80,13 @@ def decision(
 ) -> tuple[S.Action, S.Event]:
     alts = [s for s in ranked if s is not chosen]
     sparta = techniques(cause, untrusted)
-    gate = (
-        " · uncertainty gate inactive (single model)"
-        if gated is None
-        else f" · GATED: q={f.q:.2f} > {theta}, safe hold, alert ground" if gated else ""
+    uncertainty_state = (
+        "UNKNOWN"
+        if f.q is None or not math.isfinite(f.q) or f.q < 0
+        else ("KNOWN_HIGH" if f.q > theta else "KNOWN_LOW")
+    )
+    gate = f" · uncertainty {uncertainty_state}" + (
+        " · high-impact actions withheld; ground review required" if gated else ""
     )
     text = (
         f"[{sat}] {lead}P(F<{horizon}s)={f.p(horizon):.2f} ({f.model})"
@@ -111,6 +114,7 @@ def decision(
         sparta=sparta + list(COUNTERMEASURES[chosen.action]),
         data={
             "action": chosen.action,
+            "uncertainty_state": uncertainty_state,
             "R": round(chosen.R, 3),
             "U": round(chosen.U, 3),
             "C": chosen.C,
