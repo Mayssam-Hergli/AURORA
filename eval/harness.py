@@ -53,7 +53,7 @@ def hold_on_stride(score: np.ndarray, stride: int) -> np.ndarray:
 
 @torch.no_grad()
 def predict_model(name: str, split: str, stride: int, chunk: int = 150):
-    torch.set_num_threads(3)
+    torch.set_num_threads(config.load("model")["threads"])
     model = load_model(name)
     W = config.load("model")["window_s"]
     c, _ = features.load_cache(split)
@@ -88,7 +88,7 @@ def _ffill(a):
 
 # ----------------------------------------------------------------------------- baselines
 def baseline_scores(split: str):
-    torch.set_num_threads(3)
+    torch.set_num_threads(config.load("model")["threads"])
     syn = config.load("synthetic")
     c, _ = features.load_cache(split)
     n, T, S = c["raw"].shape[:3]

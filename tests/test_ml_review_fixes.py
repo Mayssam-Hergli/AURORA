@@ -311,3 +311,14 @@ def test_s10_offline_episodes_say_synthetic_live_messages_say_twin(episodes):
     tw.step(1)
     assert {m["src"] for kind, m in tw.messages_at(0) if kind == "tm"} == {"twin"}
     assert MODE_NOMINAL == 0  # mode codes are part of the engine API used by the core's adapter
+
+
+def test_legacy_feature_checkpoint_is_rejected(one_model):
+    from ml.train import load_model
+
+    path = one_model / "full_s0.pt"
+    checkpoint = torch.load(path, weights_only=False)
+    checkpoint.pop("feature_schema")
+    torch.save(checkpoint, path)
+    with pytest.raises(ValueError, match="incompatible feature schema"):
+        load_model("full_s0")

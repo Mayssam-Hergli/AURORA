@@ -12,7 +12,7 @@ lr: 0.002
 patience: 3
 loss_weights: {hazard: 1.0, next: 0.3, malicious: 0.3}
 pos_weight: 3.0
-threads: 3
+threads: 1
 ensemble_seeds: [0, 1, 2, 3, 4]
 ablations: [no_eng, unconstrained, no_residual, no_sparta, no_coupling, temporal, telemetry_only]
 uncertainty_statistic: std   # Q = ensemble std of P(F); variance (CONTEXT text) is bounded by 0.25 < theta_uncert

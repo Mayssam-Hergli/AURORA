@@ -6,10 +6,13 @@ import argparse
 import copy
 import json
 
+import numpy as np
+
 from aurora_common import topics as T
 from cassandra import config as core_config
 from cassandra.__main__ import Core
 from ml import config
+from ml.synthetic.engine import MODE_NOMINAL
 from twin.service import TwinService, build_twin
 
 T0 = 1_800_000_000.0
@@ -30,7 +33,7 @@ def run(seed, scenario, mismatch, defend, duration=480):
                 core.ingest.feed(topic, model, model.t)
 
     service = TwinService(Pipe(), plant, list(T.SATS), start_t=T0, seed=seed)
-    actions, states = [], []
+    actions, states, events, availability = [], [], [], []
     onset = 60
     for t in range(duration):
         if scenario != "clean" and t >= onset and (t - onset) % 30 == 0 and t < 240:
@@ -40,10 +43,19 @@ def run(seed, scenario, mismatch, defend, duration=480):
             # Hidden marker configures the attack actuator; contract telemetry strips it.
             plant._cmd(t, "E", "ground", cmd, args, malicious=True)
         service.step()
+        availability.append(float((plant.mode == MODE_NOMINAL).mean()))
         if core:
             for tick in core.ingest.poll(T0 + t + 1):
                 out, _ = core.handle_tick(tick)
-                actions.extend({"t": a.t - T0, "sat": a.target, "action": a.action} for a in out.actions)
+                actions.extend(
+                    {"t": a.t - T0, "sat": a.target, "action": a.action, "gated": a.gated, "q": a.q}
+                    for a in out.actions
+                )
+                events.extend(
+                    {"t": e.t - T0, "sat": e.sat, "kind": e.kind, "text": e.text}
+                    for e in out.events
+                    if e.kind in ("decision", "gated", "heal")
+                )
                 states.extend({"t": s.t - T0, "sat": s.sat, "state": s.state} for s in out.states)
                 for tc in out.tcs:
                     service.on_tc(T.tc(tc.sat), tc)
@@ -52,6 +64,24 @@ def run(seed, scenario, mismatch, defend, duration=480):
     return {
         "failed_sats": [s for s, f in zip(plant.sats, failed) if f],
         "actions": actions,
+        "states": states,
+        "events": events,
+        "first_critical_s": {
+            sat: int(np.flatnonzero(plant.failed[:duration, i])[0])
+            for i, sat in enumerate(plant.sats)
+            if failed[i]
+        },
+        "mean_availability": float(np.mean(availability)),
+        "latency_ms": (
+            {
+                "tick_median": float(np.median(core.latency_ms)),
+                "tick_p95": float(np.percentile(core.latency_ms, 95)),
+                "plan_median": float(np.median(core.plan_ms)) if core.plan_ms else None,
+                "plan_p95": float(np.percentile(core.plan_ms, 95)) if core.plan_ms else None,
+            }
+            if core
+            else None
+        ),
         "final_states": {
             s: next((x["state"] for x in reversed(states) if x["sat"] == s), "nominal") for s in plant.sats
         },
