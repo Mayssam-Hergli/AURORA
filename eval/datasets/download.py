@@ -26,7 +26,7 @@ from ml.config import DATA, MODELS
 UA = {"User-Agent": "aurora-ml-downloader"}
 # Built with `python -m ml.export --bundle v1`; a new bundle needs a new tag and hash here.
 MODELS_URL = "https://github.com/Mayssam-Hergli/AURORA/releases/download/models-v1/aurora-models-v1.zip"
-MODELS_SHA256 = "77cac5191735478f554f4e8a590065e60968a041312f226c6b94545f0d259d48"
+MODELS_SHA256 = "59645e4a8f10dac961cfe6acefcae0a20f02eba9cfbafa5d73df07f6d327bd00"
 MENDELEY = "https://data.mendeley.com/public-api/datasets/7n2d42pm3n"
 CUCD_FOLDERS = {
     "Raw": "bf667113-fbe6-43a4-8f8b-bbd3f32db4be",
