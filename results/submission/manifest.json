@@ -1,6 +1,6 @@
 {
   "status": "preliminary deadline-bounded evaluation",
-  "source_commit": "500705c07e29a5a36ab9b7d0acd8c744eb38dddb",
+  "source_commit": "74dc7720232d21ce46e0463d4f5e40db927c26f7",
   "branch": "rami",
   "source_sha256": {
     "ml/online.py": "a3747d14226442d42493d3223d3ee257599f222392badf22a6d08d685663c1cd",
@@ -65,7 +65,39 @@
     "scripts/replay_twin.py": "19d0331fb9c74df736a72cb61b12f598be0c6a4d8d89ad5b240784d734e61488",
     "scripts/launch.py": "d295cbdc8f2348ff09d281302914e86204652cd8166cd0a7a9fa679bf8b56c1f",
     "scripts/write_manifest.py": "714472d4ec8b27ae6787be5f725c39f2e5222afa681f2e2f64b4a432157545c1",
-    "scripts/freeze_results.py": "5bfd6ad000212541834ac35030f70544670242cb8f6885627cc26d27c6da106d"
+    "scripts/freeze_results.py": "5bfd6ad000212541834ac35030f70544670242cb8f6885627cc26d27c6da106d",
+    "tests/test_online_live.py": "37959abb9f35acd6d1f1e7727fcb64f38b3752078fbf15f1442e32d4f8a43d5b",
+    "tests/test_hardening.py": "c83669efb818850f862b9da5d9509798480c11bde168ba51ad8abb31904cbb15",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/test_eval_reporting.py": "971548c7ac54eb510b096109eed873594d4ec0fcf2601a553a348c69dd0242cb",
+    "tests/test_schemas.py": "94a79ab28a6ff8de20591ffbe33a604f6725d4119502b96d69fb35a30a9a90fe",
+    "tests/test_ml_review_fixes.py": "7dda7a34869f42b06ff11de7458e364e0cfb745c63e1e8ece787dc18d45f6bb4",
+    "tests/test_topics.py": "3354baf42bd3702faea7a23a14bfec7288bf9a4edc05a23775e21b70b88fb621",
+    "tests/test_dashboard.py": "076f640a818f925ed3c7b021b16c0de898b6e0bedf08a6c1af9f4986208b58e8",
+    "tests/conftest.py": "aec588f1e3abe0bfa246f569dc3b0cf04a659ea18cbfed4c3bba8ef42983112f",
+    "tests/test_ml_fixes.py": "d256cc376761c116601381e90a017a8142724a6e415824131806369be37c23a9",
+    "tests/test_synthetic_and_schema.py": "1e7b7d102ef7ff4933dda42ab1ab31625ddbb001bb4a7ee30cf5f03421ff0698",
+    "tests/test_twin_service.py": "1aa7e73c6bb6e866d39d681caf7004c25f5bc1075d62a3a95ca92e0c7cca8d81",
+    "tests/test_replay_twin.py": "5b2fa149fde71c35d77e3ff0b99f96a777734ace9bcbbc430a3c3f02e4dba557",
+    "tests/test_bus_integration.py": "444ae052df46079478297e708d40333cc1ef9146db49a4be5ad2aee38b5270a9",
+    "tests/test_model_features_metrics.py": "b4123856cab4a98a39acd5f9907e01b7986d316798778532bc0923d70b7b05ff",
+    "tests/hardware/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/hardware/test_board_profile.py": "241f7a6bbf56d25871866e44f7c13c1192bd1d72ce069f80a4026b0c99b88da5",
+    "tests/hardware/test_bridge.py": "7561a8bb7becfc7bd09f9765cc4f162e93895e20520e2c3b40e08f607c654ab1",
+    "tests/cassandra/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/cassandra/test_escalation.py": "7c886657636607effc1e891c7969ee1571c391fa82107ee8b561fd37fc3a168c",
+    "tests/cassandra/helpers.py": "cbd76f00f4397377db8bd44f92cfdf539774fa2663a37aa25942bdb4ec458842",
+    "tests/cassandra/loop.py": "8f0afdc43acbdab46b02c4809e66d2c5702e3dde441928e56b9342eabe6fad97",
+    "tests/cassandra/test_ingest.py": "ac05b441e2f561a1ba417ad194815efe910b435250a6914d70072214707e84d1",
+    "tests/cassandra/test_forecast.py": "1dceab7b64a3bd324e2f987c889038a32d32dbd7f2cbd30d95ea26386b47d4f6",
+    "tests/cassandra/test_scenarios.py": "115eac02d43d3c1a9c42fdbd8846c1764f6e4a15a54f6050a86f291573cabaa5",
+    "tests/cassandra/test_act.py": "4ba090e3557af796bebe3332d7cb5d938a0e4b0159f399ac391ef0434563d6ae",
+    "tests/cassandra/test_monitor.py": "194a5773c2edd3c007a62fc357c2bdb5a0d82d5b8942ef03e79c26327f6df164",
+    "tests/cassandra/test_gt_isolation.py": "9af46bc4b9f3c0028f56a0162df74cf9f9ca59378edb305a0a31dc4eb857de70",
+    "tests/integration/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/integration/test_board_dry_run.py": "ec38a29402e7fec0653c48f09ca59f24ed755a0cd2088cbaa0b84617ff2a912a",
+    "tests/integration/conftest.py": "231230a8a48a612a024a540594ca61565d0fd17e3ba89ed42f66f96a36f56fb6",
+    "tests/integration/test_a1_software.py": "0d00f013ad73b51f492ec73ad554d1ce17f935dbc373f5489cff9c99a4d52594"
   },
   "model_sha256": {
     "data/models/full_s0.pt": "d09f971bd5d622114b184bd758b7ee8ec935f789637ecae0d5a3dd7d0b8b9a9d",
@@ -259,11 +291,42 @@
   ],
   "results_sha256": {
     "evaluation.txt": "f2b325955de1ee167d0c7fc6fd2d6bdd0359c0a7fcf8114f2117bdc7aa803bec",
+    "selected_episode_sha256.json": "2e6d3832e278e8e605b02b68d3a33e3880ae156d78f0d70bd434dae60637feaa",
     "focused_tests.txt": "452fe83d4adda9a24370a29dd6b848789f909512624047d58d2e208d5ad56fcb",
     "metrics.json": "a8a99f341a50f62bdc10ba94c328287355a78dc52b62eea540669891dc16a607",
+    "final_suite.txt": "91402d447cb8d1664b760f0bbac7f471937c350a5ce24a6cfebb32ddb58eaa66",
     "latency.json": "0fc924e1809f9f200063445c5dfd9ac72780214691bc6b37f976b4cc0a198cb9",
+    "reassert_test.txt": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
     "previous_full_suite.txt": "0f3989f215f7ab72d6c2e48b30a8b9a8471ffb9ea1ab29f2ef1db1c8600499d3",
+    "final_regressions.txt": "4bed8cc624113743771e380f4fea7f09ec8586d03d46684c5c3a9889a2038305",
     "mqtt_tests.txt": "cf426ab35f3b06fccef8290fde5325d90af130a79da1d1752031518df77c4236"
   },
-  "bundle_sha256": "94cb58e660620d76cfe6a8597beac567e13b31fb3b58bab39bfce24fe9e79906"
+  "bundle_sha256": "94cb58e660620d76cfe6a8597beac567e13b31fb3b58bab39bfce24fe9e79906",
+  "configuration_sha256": {
+    "ml/configs/model.yaml": "b6fa8d1a73cb7072ea1a217f5cc9995ae11159c67d41df714ff2f02701239304",
+    "ml/configs/synthetic.yaml": "a1af6ba449e8e859454276072d765a1d87da6c5842637aeb4aa0873e55c218b5",
+    "eval/configs/eval.yaml": "129186aa1290e43cb180e1122c06366d3e9d7e7ae7510eded33e79a31426fa3f",
+    "cassandra/config.yaml": "fc7dbf52c89036a3d285735e5780999d983844c9873906ae7fcd5cf972724348"
+  },
+  "model_support_sha256": {
+    "data/models/understanding.npz": "9e1793f82cce44be0a197a7bb849d9de054cb9100860609884d9e0ffe975179d",
+    "data/models/understanding.json": "17967635f2d9efba86d376339c17f07a93b88f1b39704af836bd277c6cc8b9fa",
+    "data/models/calibration.json": "32265f89983f10307391699f3f8f54dbbc285174b15badc40008daa54fdd8035"
+  },
+  "paper_sha256": "cc2ae32df6fa587044f031711beb4959fa150ed696d47093700ee2a2a2736d50",
+  "final_checks": {
+    "focused_regressions": {
+      "command": "OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pytest -q tests/test_hardening.py tests/test_online_live.py tests/test_ml_fixes.py tests/test_ml_review_fixes.py tests/test_schemas.py tests/test_eval_reporting.py",
+      "exit_code": 0,
+      "tests": 82
+    },
+    "repeated_attack_mqtt": {
+      "command": "OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m pytest -q tests/integration/test_a1_software.py::test_a1_reassert_escalates_beyond_isolation_and_heals_after_stop",
+      "exit_code": 0,
+      "tests": 1
+    },
+    "latest_full_suite": "interrupted for submission deadline; partial log retained; not a completed pass",
+    "ruff": "all checks passed",
+    "formatting": "changed files passed; two unrelated prototype files fail whole-repository formatting"
+  }
 }
