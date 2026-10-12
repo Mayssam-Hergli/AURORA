@@ -56,6 +56,17 @@ SUB_OF_CHANNEL = {
     "level": "sun",
 }
 MODE_NOMINAL, MODE_SAFE, MODE_QUARANTINED = 0, 1, 2
+OFFLINE_SRC = "synthetic"  # src of generated episode files (D9); live messages_at keeps "twin"
+
+
+def refused_in_safe(cmd: str, args: dict) -> bool:
+    """docs/interfaces.md 3.2 (v1.2): in SAFE, HEATER on is refused from any origin and SET_MODE to a
+    mode other than NOMINAL or SAFE is refused. Decided from the command alone."""
+    if cmd == "HEATER":
+        return bool(args.get("on"))
+    if cmd == "SET_MODE":
+        return args.get("mode") not in ("NOMINAL", "SAFE")
+    return False
 
 
 @dataclass
@@ -348,8 +359,15 @@ class SyntheticTwin:
             tr["reported_masked"] = [sp.channel]
 
     # ================================================================== sandbox API
-    def snapshot(self):
-        return copy.deepcopy(self.__dict__)
+    def snapshot(self, include_queue: bool = True):
+        """Copy of the full state. include_queue=False is what a planner may see: no queued future
+        commands and no pending ISL propagation, only the effects already in the physical state
+        (a latched heater stays latched). M2: the sandbox must not know the attacker's plan."""
+        snap = copy.deepcopy(self.__dict__)
+        if not include_queue:
+            snap["queue"] = []
+            snap["c1"] = None
+        return snap
 
     def restore(self, snap):
         self.__dict__.update(copy.deepcopy(snap))
@@ -369,6 +387,8 @@ class SyntheticTwin:
         kind = schema.origin_kind(msg["origin"])
         accepted = bool(msg["_auth_ok"])
         if self.mode[s] in (MODE_SAFE, MODE_QUARANTINED) and kind not in ("ground", "core"):
+            accepted = False
+        if self.mode[s] == MODE_SAFE and refused_in_safe(msg["cmd"], msg.get("args") or {}):
             accepted = False
         if getattr(self, "blocked", {}).get(s, set()) and msg["origin"] in self.blocked[s]:
             accepted = False
@@ -416,16 +436,13 @@ class SyntheticTwin:
                 self.isl_enabled[s, self.idx[peer]] = bool(args.get("on", True))
 
     def _safe_mode(self, s):
-        """Safe mode: heater off, minimal loads, ignore non-ground commands (CONTEXT 5.1)."""
+        """Safe mode (docs/interfaces.md 3.2): heater off and non-essential loads off. Queued commands
+        stay queued: they are refused or accepted on delivery by the SAFE rule in _execute, which looks
+        only at the command and the mode, never at whether it is malicious (M1)."""
         self.mode[s] = MODE_SAFE
         self.heater_cmd[s] = False
         self.science[s] = False
         self.heater_attack[s] = self.wheel_attack[s] = self.drain_attack[s] = -1
-        self.queue = [
-            (k, m)
-            for k, m in self.queue
-            if not (m["sat"] == self.sats[s] and m["_malicious"] and schema.origin_kind(m["origin"]) != "isl")
-        ]
 
     def isolate_heater(self, s):
         """Core action 'isolate subsystem': cut the heater power rail (also stops a stuck heater)."""
@@ -436,6 +453,62 @@ class SyntheticTwin:
     def block_source(self, s, origin):
         self.blocked = getattr(self, "blocked", {})
         self.blocked.setdefault(s, set()).add(origin)
+
+    def seed_from_observation(self, obs: dict) -> SyntheticTwin:
+        """Make this twin a shadow of the observed world, for the core's sandbox (Phase 4).
+
+        obs = {"tick": k, "values": {sat: {sub: fields}}, "links": {(a, b) or "a-b": {...}}}
+        (the shape of cassandra.world.WorldTick: pass tick, wt.values, wt.links). Sets temperature,
+        SOC, OBC mode and counters, wheels, attitude, heater state and link enable/feasible flags of
+        every observed satellite; unobserved state keeps its model value. No queued commands, attack
+        or fault plans survive: the threat model is "observed effects persist" (a heater seen on stays
+        commanded on). `tick` sets the orbit phase (geometry index). Returns self.
+        """
+        th = self.cfg["thermal"]
+        if obs.get("tick") is not None:
+            self.t = int(np.clip(obs["tick"], 0, self.T - 1))
+        self.queue, self.c1, self.fault, self.blocked = [], None, None, {}
+        self.anomalies, self.truth = False, {s: {} for s in self.sats}  # no scripted masking or drift
+        self.heater_attack[:] = self.wheel_attack[:] = self.drain_attack[:] = -1
+        self.heater_stuck[:] = False
+        modes = {"NOMINAL": MODE_NOMINAL, "SAFE": MODE_SAFE, "QUARANTINED": MODE_QUARANTINED}
+        for sat, subs in (obs.get("values") or {}).items():
+            if sat not in self.idx:
+                continue
+            s = self.idx[sat]
+            f = subs.get("thermal")
+            if f:
+                self.temp[s] = float(f["temp_c"])
+                # heater_on also reports the thermostat; above its band the heater must be commanded
+                self.heater_cmd[s] = bool(f["heater_on"]) and self.temp[s] > th["thermostat_off_c"]
+            f = subs.get("eps")
+            if f:
+                self.soc[s] = float(np.clip(f["soc_pct"] / 100.0, 0, 1))
+            f = subs.get("adcs")
+            if f:
+                w = f.get("wheel_rpm")
+                if w is not None:
+                    self.wheels[s] = np.asarray(w, float)
+                self.theta_drift[s] = self.theta_prev[s] = abs(float(f["att_err_deg"]))
+            f = subs.get("obc")
+            if f:
+                self.mode[s] = modes.get(f.get("mode"), self.mode[s])
+                self.cmd_ok[s] = int(f.get("cmd_ok", self.cmd_ok[s]))
+                self.cmd_rej[s] = int(f.get("cmd_rej", self.cmd_rej[s]))
+                self.last_origin[s] = f.get("last_origin") or self.last_origin[s]
+                if self.mode[s] == MODE_SAFE:
+                    self.heater_cmd[s] = self.science[s] = False
+        for key, lk in (obs.get("links") or {}).items():
+            a, b = key if isinstance(key, tuple) else key.split("-")
+            if a not in self.idx or b not in self.idx:
+                continue
+            i, j = self.idx[a], self.idx[b]
+            feasible = bool(lk.get("feasible", self.geo.feasible[self.t, i, j]))
+            # the observed geometry is held over the rollout
+            self.geo.feasible[self.t :, i, j] = self.geo.feasible[self.t :, j, i] = feasible
+            if feasible and "enabled" in lk:  # an infeasible link says nothing about the enable flags
+                self.isl_enabled[i, j] = self.isl_enabled[j, i] = bool(lk["enabled"])
+        return self
 
     # ================================================================== one second of physics
     def step(self, n: int = 1):
@@ -788,7 +861,7 @@ class SyntheticTwin:
         sp, T, S = self.spec, self.T, self.S
         tick_t = self.t0_unix + np.arange(T) * self.dt
         frames = []
-        base = pd.DataFrame({"t": np.repeat(tick_t, S), "sat": np.tile(self.sats, T), "src": "twin"})
+        base = pd.DataFrame({"t": np.repeat(tick_t, S), "sat": np.tile(self.sats, T), "src": OFFLINE_SRC})
         seq = (self.seq0[None, :] + np.arange(T)[:, None]).reshape(-1)
         R = self.rep.reshape(T * S, -1)
         cols = {c: R[:, i] for i, c in enumerate(NOISY)}
@@ -854,7 +927,7 @@ class SyntheticTwin:
         commands = pd.DataFrame(
             self.commands, columns=["v", "id", "t", "sat", "origin", "cmd", "args", "accepted"]
         )
-        commands["src"] = "twin"
+        commands["src"] = OFFLINE_SRC
         a, b = np.triu_indices(S, 1)
         links = pd.DataFrame(
             {

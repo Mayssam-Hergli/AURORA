@@ -1,0 +1,16 @@
+# LF everywhere: scripts and the Makefile run in WSL even when checked out from Git Bash on Windows.
+* text=auto eol=lf
+
+# Windows-only batch files would need CRLF (none yet).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaries: never touch line endings.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.bin binary
+*.zip binary
+*.pt binary
+*.npz binary
+*.parquet binary

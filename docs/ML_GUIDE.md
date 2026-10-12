@@ -17,24 +17,24 @@ Ground truth (`labels.json`, `ml_labels.json`, `aurora/v1/gt/...`) is read only 
 
 | Topic | Fields used | Per-second channel(s) in [`ml/graph.py`](../ml/graph.py) |
 |---|---|---|
-| `aurora/v1/sat/{id}/tm` | `temp_c`, `heater_on`, `soc_pct`, `bus_v`, `load_w`, `solar_w`, `current_ma`, `att_err_deg`, `wheel_rpm[3]`, `rate_dps`, `mode`, `cmd_ok`, `cmd_rej`, `rssi_dbm`, `sun_level`, `eclipse` | THERMAL, EPS, ADCS, OBC, COMMS, SUN channels |
-| `aurora/v1/sat/{id}/tc` | `cmd`, `origin` (`ground`, `isl:X`, `unknown`) | `tc_ground`, `tc_isl`, `tc_unknown`, `tc_heater_on`, `tc_set_mode`, `tc_ping` on OBC |
+| `aurora/v1/sat/{id}/tm/{sub}` | `temp_c`, `heater_on`, `soc_pct`, `bus_v`, `load_w`, `solar_w`, `current_ma`, `att_err_deg`, `wheel_rpm[3]`, `rate_dps`, `mode`, `cmd_ok`, `cmd_rej`, `rssi_dbm`, `level` (sun), `eclipse` | THERMAL, EPS, ADCS, OBC, COMMS, SUN channels |
+| `aurora/v1/sat/{id}/tc` | `cmd`, `origin` (`ground`, `core`, `isl:X`, `unknown`) | `tc_ground`, `tc_isl`, `tc_unknown`, `tc_heater_on`, `tc_set_mode`, `tc_ping` on OBC |
 | `aurora/v1/link/...` | per-pair link up/down | E_ISL(t) mask (66 pairs for 12 satellites) and `n_isl_peers` |
 
 [`ml/online.py`](../ml/online.py) (`FrameBuilder`) turns the message stream into one frame per second: 27 channels per satellite plus 66 link states. [`ml/features.py`](../ml/features.py) (`episode_arrays`) builds the same frames offline from an episode folder. The two agree to a relative difference of 2.5e-4, which the tests check.
 
-### 1.2 Output (Section 6.2 forecast message)
+### 1.2 Output (forecast message, `docs/interfaces.md` 3.5)
 
 `aurora/v1/core/forecast/{sat}`, built by `schema.forecast_message`:
 
 ```json
 {"v": 1, "sat": "B", "t": 1760000123.0, "model": "tgn-v1",
  "p_fail": {"10": 0.02, "30": 0.11, "60": 0.43, "120": 0.71},
- "p_std":  {"10": 0.01, "30": 0.03, "60": 0.06, "120": 0.05},
- "next_sub": "EPS", "p_malicious": 0.93}
+ "p_std":  {"10": 0.01, "30": 0.03, "60": 0.06, "120": 0.05}, "q": 0.06,
+ "next_sub": "eps", "p_malicious": 0.93, "warming_up": false}
 ```
 
-`p_fail` is calibrated and monotone in the horizon. `p_std` is the ensemble standard deviation, the Q of the uncertainty gate.
+`p_fail` is calibrated and monotone in the horizon. `p_std` is the ensemble standard deviation and `q` is `p_std` at 60 s, the Q of the uncertainty gate. What a model does not know is `null`, never 0 (D4): `p_std` and `q` with fewer than 2 models; `next_sub` and `p_malicious` for the trajectory fallback (`model: "trajectory-v0"`). `warming_up` is `true` until the 30 s window is full.
 
 ### 1.3 Episodes (Section 6.3) and the ML extension
 
@@ -132,9 +132,10 @@ python -m ml.train all --parallel 1       # everything that is missing (resumabl
 
 ## 6. Deployment
 
+- **Get the models.** `make models` downloads the ensemble, `understanding.*` and `calibration.json` (the validation temperature and alert thresholds) from the `models-v1` GitHub release into `data/models/`, SHA-256 verified. The release asset is built with `python -m ml.export --bundle v1`; a new bundle needs a new tag and hash in `eval/datasets/download.py`.
 - **Export.** `python -m ml.export` traces each ensemble member to TorchScript (`data/models/ts/`), checks the traced output against eager mode, and writes `results/latency.json` (median and p95 per tick, 1 and 4 threads).
-- **On the Raspberry Pi.** Copy the repository, `data/models/full_s*.pt` and `understanding.npz`, then run `python -m ml.export` there. It exports and times the same TorchScript ensemble, and that measurement replaces the x86 one in the paper. `--bench-only` times the eager models instead.
-- **Live.** `OnlineForecaster.from_models([...])` exposes `on_telemetry`, `on_command` and `on_link` for each message, then `tick(t)`. It publishes one forecast message per satellite per second. If no model is available it falls back to the Phase-2 trajectory forecaster, so the core never runs blind.
+- **On the Raspberry Pi.** Clone the repository, run `make models`, then `python -m ml.export` there. It exports and times the same TorchScript ensemble, and that measurement replaces the x86 one in the paper. `--bench-only` times the eager models instead.
+- **Live.** `OnlineForecaster.from_models([...])` exposes `on_telemetry`, `on_command` and `on_link` for each message, then `tick(t)`. It publishes one forecast message per satellite per second. If no model is available it warns and falls back to the Phase-2 trajectory forecaster, so the core never runs blind. The fallback ignores a limit until its channel has arrived for a full 8-sample slope window, so a board that skips or delays a subsystem does not raise a false alarm.
 
 ## 7. Extending
 

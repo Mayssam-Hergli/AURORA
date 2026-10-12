@@ -86,7 +86,8 @@ def in_service(twin) -> float:
 
 def plan(twin, fc, sat, t, rc, quarantines_this_orbit, n_sats):
     t0 = time.perf_counter()
-    snap = twin.snapshot()
+    real = twin.snapshot()  # restored after planning: the world goes on with the attacker's plan
+    snap = twin.snapshot(include_queue=False)  # what the planner may know (M2)
     fc_state = (copy.deepcopy(fc.frames), copy.deepcopy(fc.buffer))
     budget_ok = (quarantines_this_orbit + 1) / n_sats <= rc["isolation_budget"] + 1e-9
     cands = [a for a in ACTIONS if a != "quarantine_reroute" or budget_ok]
@@ -105,15 +106,15 @@ def plan(twin, fc, sat, t, rc, quarantines_this_orbit, n_sats):
             fc.push_frame()
         last = fc.forecast(twin.t0_unix + k * twin.dt)  # Section 6.2: Unix time
         R = max(f["p_fail"]["60"] for f in last)
-        Q = next(f["p_std"]["60"] for f in last if f["sat"] == sat)
+        Q = next(f["q"] for f in last if f["sat"] == sat)  # None with one model (D4)
         U = in_service(twin)
         w = rc["weights"]
-        J = w["w_r"] * R + w["w_m"] * (1 - U) + w["w_c"] * rc["cost"][a] + w["w_q"] * Q
+        J = w["w_r"] * R + w["w_m"] * (1 - U) + w["w_c"] * rc["cost"][a] + w["w_q"] * (Q or 0.0)
         table.append(dict(action=a, R=R, U=U, Q=Q, J=J))
-    twin.restore(snap)
+    twin.restore(real)
     fc.frames, fc.buffer = fc_state
     best = min(table, key=lambda r: r["J"])
-    best["gated"] = best["Q"] > rc["theta_uncert"]
+    best["gated"] = None if best["Q"] is None else best["Q"] > rc["theta_uncert"]  # None: gate inactive
     return best, table, (time.perf_counter() - t0) * 1000
 
 
@@ -219,7 +220,7 @@ def main(argv=None):
                 contained=[e["sat"] for e in contain],
                 actions=[e["action"] for e in contain],
                 false_containments=[e["sat"] for e in contain if e["sat"] not in at_risk],
-                gated=sum(e.get("gated", False) for e in out["events"]),
+                gated=sum(bool(e.get("gated")) for e in out["events"]),
                 availability=out["availability"],
                 step_ms=float(np.median(out["step_ms"])),
                 plan_ms=[float(x) for x in out["plan_ms"]],
@@ -255,7 +256,7 @@ def main(argv=None):
         false_containments=sum(len(r["false_containments"]) for r in rows),
         false_containments_per_orbit=sum(len(r["false_containments"]) for r in rows) / orbits,
         actions={a: acts.count(a) for a in ACTIONS if acts.count(a)},
-        gated=sum(r["gated"] for r in rows),
+        gated=sum(bool(r["gated"]) for r in rows),
         step_ms_median=float(np.median([r["step_ms"] for r in rows])),
         plan_ms_median=float(np.median(plan)) if plan else None,
         plan_ms_p95=float(np.percentile(plan, 95)) if plan else None,

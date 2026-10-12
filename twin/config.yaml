@@ -1,0 +1,8 @@
+# Live twin service (docs/MASTER_PLAN.md Phase 3). Physics, constellation, critical limits and
+# background traffic come from ml/configs/synthetic.yaml; this file holds the live-run settings only.
+seed: 0                  # background traffic, noise, heater power per satellite
+segment_s: 3600          # engine arrays per segment; the service rolls over to a new segment seamlessly
+orbit_speedup: 8         # geometry time compression (--speedup overrides); subsystem physics stays at 1 s
+noise: gauss             # measurement noise family of the live run
+relay_delay_s: 5         # relay_tc: default delay before a compromised satellite forwards a command
+id_memory_s: 600         # how long command ids are remembered for de-duplication

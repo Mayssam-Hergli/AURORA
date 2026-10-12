@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,11 +23,25 @@ MAX_LAG = 15
 
 
 # ----------------------------------------------------------------------------- episode -> arrays
-def episode_arrays(path) -> dict:
-    ep = schema.read_episode(path)
-    tel, cmds, links, ml = ep["telemetry"], ep["commands"], ep["links"], ep["ml_labels"]
-    sats = ep["labels"].satellites
-    S, T, dt, t0 = len(sats), ml.n_ticks, ml.dt_s, ml.t0
+def episode_arrays(path, sats: list[str] | None = None) -> dict:
+    """Label files are optional (S2): without them, t0 and the satellite list come from the telemetry
+    (1 s ticks), so recorder and hardware episodes can be featurised; truth arrays are then all -1."""
+    path = Path(path)
+    has_labels = (path / "labels.json").exists() and (path / "ml_labels.json").exists()
+    ep = schema.read_episode(path, with_labels=has_labels)
+    tel, cmds, links = ep["telemetry"], ep["commands"], ep["links"]
+    if has_labels:
+        ml = ep["ml_labels"]
+        sats = sats or ep["labels"].satellites
+        T, dt, t0 = ml.n_ticks, ml.dt_s, ml.t0
+    else:
+        ts = pd.concat([tel.t, links.t])
+        ml, dt, t0 = None, 1.0, float(ts.min())
+        sats = sats or sorted(tel.sat.unique())
+        T = int(np.rint((ts.max() - t0) / dt)) + 1  # every rint(tick) below stays < T
+    tel, cmds = tel[tel.sat.isin(sats)], cmds[cmds.sat.isin(sats)] if len(cmds) else cmds
+    links = links[links.a.isin(sats) & links.b.isin(sats)]
+    S = len(sats)
     sidx = {s: i for i, s in enumerate(sats)}
     raw = np.zeros((T, S, len(graph.FLAT)), np.float32)
     tel = tel.assign(tick=np.rint((tel.t - t0) / dt).astype(int), si=tel.sat.map(sidx))
@@ -65,7 +80,7 @@ def episode_arrays(path) -> dict:
             tick=np.clip(np.rint((cmds.t - t0) / dt).astype(int), 0, T - 1), si=cmds.sat.map(sidx)
         )
         kind = c.origin.map(schema.origin_kind)
-        args_on = c.args.astype(str).str.contains('"on": true')
+        args_on = c.args.map(heater_on_arg)
         for name, m in (
             ("tc_ground", kind == "ground"),
             ("tc_isl", kind == "isl"),
@@ -84,7 +99,21 @@ def episode_arrays(path) -> dict:
         tick=np.rint((links.t - t0) / dt).astype(int), k=[pidx[(a, b)] for a, b in zip(links.a, links.b)]
     )
     lk[li.tick.to_numpy(), li.k.to_numpy()] = li.enabled.to_numpy(bool)
-    return dict(raw=raw, links=lk, **truth_arrays(ml, sats))
+    truth = truth_arrays(ml, sats) if ml is not None else no_truth(S)
+    return dict(raw=raw, links=lk, **truth)
+
+
+def heater_on_arg(args) -> bool:
+    """`args` of a HEATER command as stored (JSON string, compact or spaced) or as a dict (M4)."""
+    if isinstance(args, str):
+        args = json.loads(args) if args.strip() else {}
+    return bool((args or {}).get("on"))
+
+
+def no_truth(S: int) -> dict:
+    return dict(
+        crit=np.full(S, -1), onset=np.full(S, -1), malicious=np.full(S, -1), affected=np.full((S, 6), 10**6)
+    )
 
 
 def _ffill(g):
@@ -98,7 +127,9 @@ def truth_arrays(ml: schema.MLLabels, sats: list[str]) -> dict:
     crit, onset, mal = np.full(S, -1), np.full(S, -1), np.full(S, -1)
     affected = np.full((S, 6), 10**6)
     for i, s in enumerate(sats):
-        st = ml.satellites[s]
+        st = ml.satellites.get(s)
+        if st is None:  # interfaces.md 4: only satellites with an anomaly need to be listed
+            continue
         crit[i] = -1 if st.critical_t is None else int(round(st.critical_t))
         onset[i] = -1 if st.onset_t is None else int(round(st.onset_t))
         mal[i] = -1 if st.malicious is None else int(st.malicious)

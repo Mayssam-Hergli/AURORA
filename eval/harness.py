@@ -29,22 +29,26 @@ OUT = config.RESULTS / "eval"
 SPLITS = ["val", "test_id", "test_ood", "test_real"]
 
 
+def splits() -> list[str]:
+    """The splits that were generated and cached (test_real needs OPS-SAT data, S7)."""
+    return [s for s in SPLITS if (config.CACHE / f"{s}.npz").exists()]
+
+
 def model_names():
     return sorted(p.stem for p in config.MODELS.glob("*.pt") if p.stem != "baselines")
 
 
 # ----------------------------------------------------------------------------- forecaster predictions
-def eval_ticks(c: dict, e: int, T: int, stride: int, coarse: int = 6) -> np.ndarray:
-    """Ticks at which a model is evaluated: every `coarse` s everywhere (an unbiased sample for
-    false-positive rates) and every `stride` s from the first anomaly onset to the last failure,
-    where lead time is measured. Ground truth only schedules the measurement, never the inputs."""
-    ticks = set(range(0, T, coarse))
-    on, cr = c["onset"][e], c["crit"][e]
-    if (on >= 0).any():
-        lo = max(0, int(on[on >= 0].min()) - 10)
-        hi = int(cr[cr >= 0].max()) + 1 if (cr >= 0).any() else T
-        ticks |= set(range(lo - lo % stride, min(hi, T), stride))
-    return np.array(sorted(ticks))
+def eval_ticks(T: int, stride: int) -> np.ndarray:
+    """Ticks at which every method is scored: every `stride` s, the same for all episodes (S1).
+    Scores are held until the next scored tick, so lead time is resolved to within stride - 1 s."""
+    return np.arange(0, T, stride)
+
+
+def hold_on_stride(score: np.ndarray, stride: int) -> np.ndarray:
+    """[n, T, S] per-tick scores -> the value at the last scored tick, as for the forecaster."""
+    T = score.shape[1]
+    return score[:, (np.arange(T) // stride) * stride]
 
 
 @torch.no_grad()
@@ -59,7 +63,7 @@ def predict_model(name: str, split: str, stride: int, chunk: int = 150):
     mal = np.full((n, T, S), np.nan, np.float32)
     for e in range(n):
         raw, lk = episode_windows(c, e, W, 0, T)
-        ticks = eval_ticks(c, e, T, stride)
+        ticks = eval_ticks(T, stride)
         for k in range(0, len(ticks), chunk):
             tk = ticks[k : k + chunk]
             out = model(raw[tk], lk[tk])
@@ -98,6 +102,8 @@ def baseline_scores(split: str):
         out["trajectory"][e] = BL.trajectory_score(raw, syn["critical"], horizon=horizon)[0]
         for kind, (model, stats) in seq_models.items():
             out[kind][e] = BL.sequence_scores(kind, model, (raw[0] - und.mu) / und.sd, err_stats=stats)
+    stride = config.load("eval")["stride_s"]
+    out = {k: hold_on_stride(v, stride) for k, v in out.items()}  # same schedule as the models (S1)
     OUT.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(OUT / f"pred_baselines_{split}.npz", **out)
 
@@ -142,16 +148,21 @@ def _sequence_baselines(und):
 
 
 # ----------------------------------------------------------------------------- orchestration
-def run(workers: int):
-    ev = config.load("eval")
+def missing_jobs() -> list[list[str]]:
+    """Prediction jobs whose output is missing: baselines, ensemble and ablations on every split (S9)."""
     jobs = []
-    for split in SPLITS:
+    for split in splits():
         if not (OUT / f"pred_baselines_{split}.npz").exists():
             jobs.append(["baselines", split])
         for name in model_names():
-            if name.startswith("full") or split in ("val", "test_id", "test_real"):
-                if not (OUT / f"pred_{name}_{split}.npz").exists():
-                    jobs.append(["predict", name, split])
+            if not (OUT / f"pred_{name}_{split}.npz").exists():
+                jobs.append(["predict", name, split])
+    return jobs
+
+
+def run(workers: int):
+    ev = config.load("eval")
+    jobs = missing_jobs()
     # baselines first: they also train the sequence baselines once
     first = [j for j in jobs if j[0] == "baselines"][:1]
     for j in first:
@@ -190,7 +201,7 @@ def compute_metrics():
     abl_names = [m for m in model_names() if not m.startswith("full_s")]
     h_idx = HORIZONS.index(ev["primary_horizon_s"])
     data = {}
-    for split in SPLITS:
+    for split in splits():
         c, idx = features.load_cache(split)
         data[split] = (c, idx)
 
@@ -235,7 +246,9 @@ def compute_metrics():
         ev["response"]["act_threshold"]
     )  # the response engine's own action threshold
     results = {"temperature": temp, "tau": taus, "splits": {}}
-    for split in ev["test_splits"]:
+    cal = Cal.calibration_record(temp, taus["ensemble"], ens_names, ev)
+    (config.MODELS / "calibration.json").write_text(json.dumps(cal, indent=1))
+    for split in [x for x in ev["test_splits"] if x in data]:
         c, idx = data[split]
         kinds = idx.kind.to_numpy()
         benign = M.benign_mask(c, kinds)
@@ -248,6 +261,7 @@ def compute_metrics():
                 tau=taus[k],
                 realized_fpr=M.realized_fpr(s, benign, taus[k]),
                 false_alarms_per_sat_hour=M.false_alarms_per_hour(s, benign, taus[k]),
+                **M.pre_onset_false_alarms(s, c, kinds, taus[k]),
                 **M.lead_summary(rows),
                 **M.bootstrap(rows, ev["bootstrap"]),
                 episode=M.episode_pr(s, c, kinds, taus[k]),
@@ -353,22 +367,26 @@ def write_markdown(res):
         "# CASSANDRA ML v1: evaluation results",
         "",
         "Synthetic constellation episodes (12 satellites); tau chosen on validation clean + fault "
-        "episodes at 0.1 % FPR and applied unchanged to each test split. Lead time = T_critical - T_alert.",
+        "episodes at 0.1 % FPR and applied unchanged to each test split. Lead time = T_critical - T_alert. "
+        "Every method is scored every stride_s seconds from tick 0; alarms before the attack onset "
+        "count as false alarms (Pre-onset FA).",
         "",
     ]
     for split, R in res["splits"].items():
         L += [
             f"## {split}",
             "",
-            "| Method | Recall | Median lead (s) | IQR (s) | Realized FPR | Episode P / R (reaches F) |",
-            "|---|---|---|---|---|---|",
+            "| Method | Recall | Median lead (s) | IQR (s) | Realized FPR | Pre-onset FA / sat-h "
+            "| Episode P / R (reaches F) |",
+            "|---|---|---|---|---|---|---|",
         ]
         for k, v in R["methods"].items():
             ep = v["episode"]["reaches_F"]
             iqr = f"{v['iqr_lead_s'][0]:.0f}-{v['iqr_lead_s'][1]:.0f}"
             L.append(
                 f"| {k} | {v['recall']:.2f} | {v['median_lead_s']:.0f} | {iqr} "
-                f"| {100 * v['realized_fpr']:.2f} % | {ep['precision']:.2f} / {ep['recall']:.2f} |"
+                f"| {100 * v['realized_fpr']:.2f} % | {v['pre_onset_false_alarms_per_sat_hour']:.2f} "
+                f"| {ep['precision']:.2f} / {ep['recall']:.2f} |"
             )
         L += [
             "",

@@ -6,6 +6,7 @@ python -m eval.datasets.download scad --attack-runs-per-wheel 30   # SCAD subset
 python -m eval.datasets.download scad --all      # full SCAD (~1.4 GB)
 python -m eval.datasets.download esa-adb --mission 1 --allow-large   # ESA-AD (3.7-4.1 GB per mission)
 python -m eval.datasets.download all             # cucd + opssat + SCAD subset
+python -m eval.datasets.download models          # trained forecaster (GitHub release), SHA-256 verified
 """
 
 from __future__ import annotations
@@ -20,9 +21,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from ml.config import DATA
+from ml.config import DATA, MODELS
 
 UA = {"User-Agent": "aurora-ml-downloader"}
+# Built with `python -m ml.export --bundle v1`; a new bundle needs a new tag and hash here.
+MODELS_URL = "https://github.com/Mayssam-Hergli/AURORA/releases/download/models-v1/aurora-models-v1.zip"
+MODELS_SHA256 = "59645e4a8f10dac961cfe6acefcae0a20f02eba9cfbafa5d73df07f6d327bd00"
 MENDELEY = "https://data.mendeley.com/public-api/datasets/7n2d42pm3n"
 CUCD_FOLDERS = {
     "Raw": "bf667113-fbe6-43a4-8f8b-bbd3f32db4be",
@@ -138,9 +142,21 @@ def esa_adb(mission: int, allow_large: bool) -> Path:
     return out
 
 
+def models(url: str = MODELS_URL, sha256: str = MODELS_SHA256) -> Path:
+    """Trained ensemble, understanding and calibration into data/models/ (what the core loads)."""
+    archive = _fetch(url, DATA / url.rsplit("/", 1)[-1])
+    if _hash(archive, "sha256") != sha256:
+        archive.unlink()
+        raise RuntimeError(f"checksum mismatch for {url}")
+    with zipfile.ZipFile(archive) as z:
+        z.extractall(MODELS)
+    print(f"models ready in {MODELS} (SHA-256 verified)")
+    return MODELS
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("dataset", choices=["cucd", "opssat", "scad", "esa-adb", "all"])
+    ap.add_argument("dataset", choices=["cucd", "opssat", "scad", "esa-adb", "all", "models"])
     ap.add_argument("--attack-runs-per-wheel", type=int, default=30)
     ap.add_argument("--all", action="store_true", help="SCAD: every run (~1.4 GB)")
     ap.add_argument("--mission", type=int, default=1)
@@ -154,6 +170,8 @@ def main(argv=None):
         scad(a.attack_runs_per_wheel, a.all)
     if a.dataset == "esa-adb":
         esa_adb(a.mission, a.allow_large)
+    if a.dataset == "models":
+        models()
 
 
 if __name__ == "__main__":
