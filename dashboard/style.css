@@ -1,0 +1,47 @@
+:root {
+  --bg: #0b1020; --panel: #121a30; --line: #24304f; --text: #e8edf7; --muted: #8a96b3;
+  --nominal: #22c55e; --flagged: #ef4444; --off: #475569; --hw: #f59e0b; --emu: #38bdf8;
+  font-size: 18px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+.title { font-size: 1.3rem; } .title .sub, .muted { color: var(--muted); font-size: 0.85em; }
+.hdr-right { display: flex; gap: 18px; align-items: center; }
+.legend i.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: middle; }
+.dot.nominal { background: var(--nominal); } .dot.flagged { background: var(--flagged); } .dot.off { background: var(--off); }
+.conn { padding: 3px 10px; border-radius: 12px; font-weight: 600; }
+.conn.up { background: #14532d; } .conn.down { background: #7f1d1d; }
+#clock { font-variant-numeric: tabular-nums; color: var(--muted); }
+main { flex: 1; display: grid; grid-template-columns: 330px 1fr 420px; gap: 12px; padding: 12px; min-height: 0; }
+#tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+.tile { background: var(--panel); border: 2px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; position: relative; }
+.tile.sel { outline: 3px solid #93c5fd; }
+.tile .id { font-size: 1.6rem; font-weight: 700; }
+.tile .state { position: absolute; right: 10px; top: 10px; width: 22px; height: 22px; border-radius: 50%; background: var(--nominal); }
+.tile.flagged { border-color: var(--flagged); } .tile.flagged .state { background: var(--flagged); }
+.tile.quarantined .state, .tile.safe_hold .state { background: var(--off); } .tile.quarantined, .tile.safe_hold { opacity: 0.75; }
+.tile .badge { font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-left: 6px; vertical-align: middle; }
+.badge.emu { background: #0c4a6e; color: var(--emu); } .badge.hw { background: #78350f; color: var(--hw); }
+.tile .vals { font-size: 0.85rem; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .pf { font-weight: 700; color: var(--text); }
+.tile .stname { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+#focus { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.focus-head { display: flex; align-items: baseline; gap: 14px; } .focus-head h2 { margin: 0; font-size: 1.5rem; }
+.chart-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.chart-title { font-size: 0.85rem; margin-bottom: 4px; }
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+canvas { width: 100%; display: block; }
+#side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.panel h3 { margin: 0 0 6px; font-size: 1rem; }
+.panel.grow { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+#events { margin: 0; padding-left: 0; list-style: none; overflow-y: auto; font-size: 0.8rem; flex: 1; }
+#events li { padding: 4px 6px; border-left: 4px solid var(--line); margin-bottom: 4px; background: #0f172a; }
+#events li.alarm { border-color: var(--flagged); } #events li.warning { border-color: #f59e0b; } #events li.info { border-color: var(--nominal); }
+#events .t { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+#action .act { font-size: 1.3rem; font-weight: 700; } #action .alt { color: var(--muted); font-size: 0.85rem; }
+#action .gated { color: #f59e0b; font-weight: 700; }
+footer { display: grid; grid-template-columns: 1fr 520px; gap: 12px; padding: 0 12px 12px; }
+#links { font-size: 0.85rem; } #links .cut { color: var(--flagged); font-weight: 700; }
+.honesty { font-size: 0.8rem; color: var(--muted); align-self: center; }

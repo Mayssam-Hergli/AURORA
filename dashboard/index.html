@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AURORA / CASSANDRA</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="title"><b>AURORA</b> · CASSANDRA predictive defence <span class="sub">12-satellite constellation, live bus</span></div>
+  <div class="hdr-right">
+    <span class="legend"><i class="dot nominal"></i>nominal <i class="dot flagged"></i>flagged <i class="dot off"></i>contained</span>
+    <span id="conn" class="conn down">connecting…</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</header>
+<main>
+  <section id="tiles" aria-label="satellites"></section>
+  <section id="focus">
+    <div class="focus-head">
+      <h2 id="focus-title">Satellite —</h2>
+      <span id="focus-meta"></span>
+    </div>
+    <div class="chart-wrap"><div class="chart-title">P(F &lt; t + 60 s) <span id="pf-model" class="muted"></span></div><canvas id="chart-pf" height="220"></canvas></div>
+    <div class="chart-row">
+      <div class="chart-wrap"><div class="chart-title">temp_c (°C) <span id="temp-note" class="muted"></span></div><canvas id="chart-temp" height="150"></canvas></div>
+      <div class="chart-wrap"><div class="chart-title">soc_pct (%)</div><canvas id="chart-soc" height="150"></canvas></div>
+    </div>
+  </section>
+  <section id="side">
+    <div class="panel"><h3>Last action</h3><div id="action" class="muted">none yet</div></div>
+    <div class="panel grow"><h3>Event log <span class="muted">core/event</span></h3><ol id="events"></ol></div>
+  </section>
+</main>
+<footer>
+  <div class="panel"><h3>Inter-satellite links <span class="muted">feasible · enabled</span></h3><div id="links" class="muted">waiting for link messages…</div></div>
+  <div class="honesty">Satellites marked <b>EMULATED</b> are simulated by the digital twin. <b>HW</b> is the ESP8266 board (its temperature is computed by the firmware: <i>emulated</i>). With one board, cutting B's links is logical, not a radio cut.</div>
+</footer>
+<script src="vendor/mqtt-5.16.0.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

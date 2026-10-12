@@ -1,11 +1,23 @@
 # dashboard/
 
-**Purpose:** The operator dashboard, built on NASA Open MCT (Node.js). Views: constellation map (orbits, live links, node colours Green/Red/Off), per-satellite telemetry plots, P(F) curves with confidence band and threshold line, event log from `cassandra/explain`, link status table, and an "emulated" badge on simulated satellites. Must run full-screen on a projector and survive reconnects.
+**Purpose:** the operator dashboard on the projector: 12 satellite tiles (state colour, **EMULATED** / **HW** badge, temperature, P(F < t + 60 s)), the focused satellite's P(F) curve with the ±1 std ensemble band and the core's flag/plan thresholds, its temperature and SOC with limits, the last `core/action` with its alternatives and J, the `core/event` log, and the link status (feasible, enabled, cut).
 
-**Status:** planned (later task, dashboard v0 targeted for live telemetry once the ground station and twin v0/v1 are up).
+**Status:** done as the **single-page fallback** (MASTER_PLAN cut list item 6): plain HTML/JS, no build step, no database, works offline (MQTT.js 5.16.0 vendored in `vendor/`, MIT). Open MCT was not attempted overnight (11–12 Oct): with the 9am deadline, the time went to the board, the ML fixes and the scenario runs. **Owner:** Mayssam Hergli.
 
-**Owner:** TBD (digital twin, episode generator, evaluation harness — or reassigned at dashboard v0).
+```bash
+make up            # broker with the WebSocket listener on 9001
+make demo-sw       # twin + core
+make dashboard     # http://localhost:8080 (WSL forwards it to Windows); F11 for full screen
+```
+Click a tile to focus that satellite. The page reconnects by itself (every 2 s) after a broker restart and re-subscribes.
 
-**Interfaces it uses:**
-- Consumes all `aurora/v1/...` topics via an MQTT → WebSocket bridge (hosted in `ground/`), per `docs/interfaces.md`.
-- Never consumes `aurora/v1/gt/...` directly in its live view, except where explicitly labelling emulated/ground-truth context for operator honesty (e.g. the "emulated" badge), consistent with Rule 2 (be honest about what is emulated).
+| File | What |
+|---|---|
+| `index.html`, `style.css` | layout for a 1080p projector, large fonts, dark theme |
+| `config.js` | broker URL (`ws://<host>:9001`), history length (15 min), threshold lines |
+| `store.js` | all message handling (pure, tested with Node: `tests/dashboard/store_test.js`) |
+| `app.js` | MQTT over WebSocket, drawing (canvas), panels |
+
+**Subscriptions:** `sat/+/tm/+`, `sat/+/state`, `link/+`, `core/forecast/+`, `core/action`, `core/event`. Never `gt/` or `redteam/`.
+
+**Verified overnight:** store logic (Node test); the live data path ws://localhost:9001 → `store.js` with twin + core + A1 running (about 67 000 messages in 45 s, E contained and healed). **Not verified:** the page in a real browser (no browser on this machine overnight): open it once before rehearsal.
