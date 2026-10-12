@@ -93,6 +93,8 @@ def evaluate(model, cv, items, mc):
 
 
 def train_job(variant: str, seed: int):
+    (config.RESULTS / "logs").mkdir(parents=True, exist_ok=True)  # S3: also for a single `train job`
+    config.MODELS.mkdir(parents=True, exist_ok=True)
     mc = config.load("model")
     torch.set_num_threads(mc["threads"])
     torch.manual_seed(seed)

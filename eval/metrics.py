@@ -3,7 +3,10 @@
 Conventions (per satellite s of episode e; ticks are 1 s):
     benign timesteps  every tick of satellites in clean and fault episodes that never reach F
     tau               (1 - target_fpr) quantile of a method's scores on benign timesteps
-    T_alert           first tick >= the episode's first anomaly onset with score >= tau
+    T_alert           first tick with score >= tau, counted from tick 0 (M3). If it falls before the
+                      episode's first anomaly onset it is a false alarm (`pre_onset_alarm`, and
+                      pre_onset_false_alarms below); detection and lead then use the first alert at
+                      or after onset, so an early false alarm never earns lead time
     T_lead            T_critical - T_alert for satellites that reach F (responses disabled);
                       alerts at or after T_critical are misses
     detection delay   T_alert - onset of that satellite (negative = predictive warning, e.g. a
@@ -52,7 +55,9 @@ def alerts(score, truth, tau) -> list[dict]:
         start = int(on[on >= 0].min())
         for s in range(S):
             tc = int(truth["crit"][e, s])
-            hit = np.flatnonzero(score[e, start:, s] >= tau)
+            above = score[e, :, s] >= tau
+            t_alert_any = int(np.argmax(above)) if above.any() else -1
+            hit = np.flatnonzero(above[start:])
             t_alert = start + int(hit[0]) if len(hit) else -1
             if tc >= 0:
                 detected = 0 <= t_alert < tc
@@ -63,6 +68,8 @@ def alerts(score, truth, tau) -> list[dict]:
                         failing=True,
                         t_crit=tc,
                         t_alert=t_alert,
+                        t_alert_any=t_alert_any,
+                        pre_onset_alarm=bool(0 <= t_alert_any < start),
                         detected=detected,
                         lead=tc - t_alert if detected else 0.0,
                         delay=(t_alert - int(on[s])) if detected and on[s] >= 0 else np.nan,
@@ -70,6 +77,24 @@ def alerts(score, truth, tau) -> list[dict]:
                     )
                 )
     return rows
+
+
+def pre_onset_false_alarms(score, truth, kinds, tau, dt_s: float = 1.0) -> dict:
+    """M3: alarms in attack episodes before the first anomaly onset are false alarms (every satellite)."""
+    events, sat_s, alarmed = 0, 0.0, 0
+    for e in np.flatnonzero(np.asarray(kinds) == "attack"):
+        on = truth["onset"][e]
+        if (on < 0).all() or on[on >= 0].min() <= 0:
+            continue
+        a = score[e, : int(on[on >= 0].min())] >= tau  # [ticks before onset, S]
+        events += int(a[0].sum() + (a[1:] & ~a[:-1]).sum())
+        sat_s += a.size * dt_s
+        alarmed += int(a.any(0).sum())
+    return dict(
+        pre_onset_alarm_events=events,
+        pre_onset_sats_alarmed=alarmed,
+        pre_onset_false_alarms_per_sat_hour=events / (sat_s / 3600) if sat_s else np.nan,
+    )
 
 
 def lead_summary(rows: list[dict]) -> dict:

@@ -45,11 +45,11 @@ def test_fallback_still_sees_a_heating_trend():
     assert p[-1] > 0.9
 
 
-def test_from_models_warns_without_models(tmp_path, monkeypatch):
+def test_from_models_logs_the_fallback_without_models(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(config, "MODELS", tmp_path)
-    with pytest.warns(UserWarning, match="make models"):
+    with caplog.at_level("WARNING", logger="ml.online"):
         fc = OnlineForecaster.from_models()
-    assert fc.models == []
+    assert fc.models == [] and "make models" in caplog.text
 
 
 def test_model_bundle_round_trip(tmp_path, monkeypatch):
@@ -62,12 +62,11 @@ def test_model_bundle_round_trip(tmp_path, monkeypatch):
         (src / "data" / "models" / name).write_bytes(name.encode())
     metrics = {"temperature": 0.74, "tau": {"ensemble": 0.02}}
     (src / "results" / "eval" / "metrics.json").write_text(json.dumps(metrics))
-    monkeypatch.setattr(config, "ROOT", src)
     monkeypatch.setattr(config, "MODELS", src / "data" / "models")
     monkeypatch.setattr(config, "RESULTS", src / "results")
 
-    first = export.bundle("test").read_bytes()
-    archive = export.bundle("test")
+    first = export.bundle("test", tmp_path / "dist").read_bytes()
+    archive = export.bundle("test", tmp_path / "dist")
     assert archive.read_bytes() == first  # reproducible: the release hash stays valid
 
     monkeypatch.setattr(download, "DATA", dst)
@@ -76,8 +75,8 @@ def test_model_bundle_round_trip(tmp_path, monkeypatch):
     assert sorted(p.name for p in (dst / "models").iterdir()) == sorted(names + ["calibration.json"])
 
     monkeypatch.setattr(config, "MODELS", dst / "models")
-    monkeypatch.setattr(config, "RESULTS", tmp_path / "no-results")
-    assert online.calibration_temperature() == 0.74
+    cal = online.load_calibration()
+    assert cal["temperature"] == 0.74 and cal["tau"] == 0.02 and cal["fpr_target"] == 0.001
 
     with pytest.raises(RuntimeError, match="checksum"):
         download.models(archive.as_uri(), "0" * 64)

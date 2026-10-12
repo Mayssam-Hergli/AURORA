@@ -95,22 +95,30 @@ def forecast_message(
     sat: str,
     t: float,
     p_fail: dict[int, float],
-    p_std: dict[int, float],
-    next_sub: str,
-    p_malicious: float,
+    p_std: dict[int, float] | None,
+    next_sub: str | None,
+    p_malicious: float | None,
     model: str = "tgn-v1",
+    warming_up: bool | None = None,
+    q_horizon_s: int = 60,
 ) -> dict:
-    """Payload for aurora/v1/core/forecast/{sat} (Section 6.2)."""
-    return {
+    """Payload for aurora/v1/core/forecast/{sat} (docs/interfaces.md 3.5). What a model does not know
+    is null, never 0 (D4): p_std and q with fewer than 2 models, next_sub and p_malicious for the
+    trajectory forecaster. q is p_std at the decision horizon."""
+    msg = {
         "v": SCHEMA_VERSION,
         "sat": sat,
         "t": float(t),
         "model": model,
         "p_fail": {str(k): round(float(v), 4) for k, v in p_fail.items()},
-        "p_std": {str(k): round(float(v), 4) for k, v in p_std.items()},
+        "p_std": None if p_std is None else {str(k): round(float(v), 4) for k, v in p_std.items()},
+        "q": None if p_std is None or q_horizon_s not in p_std else round(float(p_std[q_horizon_s]), 4),
         "next_sub": next_sub,
-        "p_malicious": round(float(p_malicious), 4),
+        "p_malicious": None if p_malicious is None else round(float(p_malicious), 4),
     }
+    if warming_up is not None:
+        msg["warming_up"] = bool(warming_up)
+    return msg
 
 
 # ----------------------------------------------------------------------------- episode IO (6.3)

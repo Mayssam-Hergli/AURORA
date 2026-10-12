@@ -54,6 +54,12 @@ def _one(args):
     )
 
 
+def opssat_available() -> bool:
+    from eval.datasets.opssat import BANK, SRC
+
+    return BANK.exists() or (SRC / "segments.csv").exists()
+
+
 def generate(split: str, n: int | None = None, workers: int = 4) -> pd.DataFrame:
     cfg = config.load("synthetic")
     n = n or cfg["splits"][split]
@@ -77,6 +83,13 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args(argv)
     for split in [a.split] if a.split else list(cfg["splits"]):
+        if split == "test_real" and not opssat_available():
+            print(
+                "test_real skipped: it replays real OPS-SAT noise and data/opssat-ad/ is missing "
+                "(make data, or python -m eval.datasets.download opssat)",
+                flush=True,
+            )
+            continue
         t0 = time.time()
         idx = generate(split, a.n, a.workers)
         print(

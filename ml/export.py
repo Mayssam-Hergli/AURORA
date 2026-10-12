@@ -26,6 +26,7 @@ import numpy as np
 import torch
 
 from ml import config
+from ml.calibration import calibration_record
 from ml.train import load_model
 
 
@@ -93,20 +94,22 @@ def _entry(name: str) -> zipfile.ZipInfo:
     return info
 
 
-def bundle(tag: str) -> Path:
+def bundle(tag: str, out_dir: Path | None = None) -> Path:
     """Zip what OnlineForecaster.from_models needs: ensemble, understanding, calibration."""
     members = sorted(config.MODELS.glob("full_s*.pt"))
     if not members:
         raise FileNotFoundError(f"no full_s*.pt in {config.MODELS}: train or copy the ensemble first")
     files = members + [config.MODELS / "understanding.npz", config.MODELS / "understanding.json"]
-    metrics = json.loads((config.RESULTS / "eval" / "metrics.json").read_text())
-    calibration = {
-        "temperature": metrics["temperature"],
-        "tau": metrics["tau"],
-        "source": "results/eval/metrics.json (eval.harness, validation split)",
-    }
-    out = config.ROOT / "dist" / f"aurora-models-{tag}.zip"
-    out.parent.mkdir(exist_ok=True)
+    cal_path = config.MODELS / "calibration.json"
+    if cal_path.exists():  # written by eval.harness (M5)
+        calibration = json.loads(cal_path.read_text())
+    else:  # models evaluated before calibration.json existed: rebuild it from the harness output
+        metrics = json.loads((config.RESULTS / "eval" / "metrics.json").read_text())
+        calibration = calibration_record(
+            metrics["temperature"], metrics["tau"]["ensemble"], [p.stem for p in members], config.load("eval")
+        )
+    out = (out_dir or config.ROOT / "dist") / f"aurora-models-{tag}.zip"
+    out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, "w") as z:
         for p in files:
             z.writestr(_entry(p.name), p.read_bytes())
