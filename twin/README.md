@@ -1,13 +1,14 @@
 # twin/
 
-**Purpose:** The digital twin — subsystem models (THERMAL, EPS, ADCS, OBC, COMMS, SUN), the orbit/geometry engine, the episode generator, and the counterfactual sandbox API. Three jobs: (1) scale the constellation to 12 satellites (3 physical + 9 simulated), (2) act as a data factory generating labelled attack/fault/clean episodes at ~100× real time, (3) serve as the sandbox CASSANDRA clones to evaluate candidate responses (J(a)).
+**Purpose:** the live digital twin on the AURORA bus and the episode recorder (MASTER_PLAN Phase 3, CONTEXT 5.3).
 
-**Status:** planned (Task 4 for v0 — one satellite, thermal + EPS; Task 5 for the episode generator; later tasks for v1 — 12 satellites, orbits, ADCS, ISL geometry).
+**Status:** done (v1 on the synthetic engine): `service.py` and `recorder.py`, branch `p3-twin`. **Owner:** Mayssam Hergli (took over from Youssef Mhamdi on 11 Oct).
 
-**Owner:** TBD (digital twin, episode generator, evaluation harness).
+| File | What |
+|---|---|
+| `service.py` | `python -m twin.service` / `make twin`: steps `ml.synthetic.engine.SyntheticTwin` on a clean scenario, publishes 12 satellites (or `--sats A,C-L`) at 1 Hz (`--speed` for fast-forward), applies bus telecommands (SAFE rule of interfaces.md 3.2), red-team effects on `redteam/{id}`, faults with `--fault`, retained initial states, rollover every `--chunk` seconds so memory stays flat |
+| `recorder.py` | `python -m twin.recorder` / `make record`: subscribes to `aurora/v1/#` **including `gt/`** (the scorer, never the defence) and writes a Section 6.3 episode (Parquet + `labels.json` + `ml_labels.json` with `t0`); critical times from recorded telemetry |
 
-**Interfaces it uses:**
-- Publishes telemetry/state/link messages identical in schema to hardware, but with `src: "twin"` (see `docs/interfaces.md` Section 6.2).
-- Accepts telecommands the same way hardware nodes do.
-- Exposes a Python sandbox API: `twin.snapshot()`, `twin.restore(s)`, `twin.apply(command)`, `twin.step(n)`, `twin.run_episode(spec) -> Episode`, used by `cassandra/sandbox`.
-- Episode generator writes `episodes/{episode_id}/telemetry.parquet`, `commands.parquet`, `links.parquet`, `labels.json` per `docs/interfaces.md` Section 6.3. `labels.json` (ground truth) is for the evaluation harness/recorder only — never read by `cassandra/`.
+`scripts/replay_twin.py` is an alias of `service.py` kept for older commands. The sandbox API (`snapshot(include_queue=False)`, `restore`, `apply`, `step`, `seed_from_observation`) is on the engine (`ml/synthetic/engine.py`).
+
+Honesty: everything the twin publishes is simulated (`src: "twin"`); offline training episodes say `src: "synthetic"`.

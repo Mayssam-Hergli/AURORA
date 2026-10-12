@@ -128,7 +128,8 @@ def truth_arrays(ml: schema.MLLabels, sats: list[str]) -> dict:
     crit, onset, mal = np.full(S, -1), np.full(S, -1), np.full(S, -1)
     affected = np.full((S, 6), 10**6)
     for i, s in enumerate(sats):
-        st = ml.satellites[s]
+        # interfaces.md 4: only satellites with an anomaly need to be listed
+        st = ml.satellites.get(s) or schema.SatelliteTruth()
         crit[i] = -1 if st.critical_t is None else int(round(st.critical_t))
         onset[i] = -1 if st.onset_t is None else int(round(st.onset_t))
         mal[i] = -1 if st.malicious is None else int(st.malicious)

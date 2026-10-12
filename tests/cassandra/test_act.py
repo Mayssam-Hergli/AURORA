@@ -78,7 +78,10 @@ def test_shadow_geometry_matches_the_observed_orbit_phase():
     links = {}
     for i in range(tw.S):
         for j in range(i + 1, tw.S):
-            links[f"{tw.sats[i]}-{tw.sats[j]}"] = {"feasible": bool(tw.geo.feasible[tw.t - 1, i, j]), "enabled": True}
+            links[f"{tw.sats[i]}-{tw.sats[j]}"] = {
+                "feasible": bool(tw.geo.feasible[tw.t - 1, i, j]),
+                "enabled": True,
+            }
     t, mism = ad.phase({"links": links})
     assert mism <= 2  # the same constellation: some phase matches (almost) exactly
     sh = ad.shadow({"t": T0, "sats": {}, "links": links})

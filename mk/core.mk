@@ -2,7 +2,7 @@
 #   make up / down / reset          Mosquitto on 1883 (MQTT) + 9001 (WebSockets)
 #   make tail [TAIL_ARGS=...]       watch the bus, e.g. make tail TAIL_ARGS="--rate"
 #   make bus-check                  publish one sample message and confirm it comes back
-#   make twin-replay [SATS=A-L]     stand-in plant (scripts/replay_twin.py) until twin/service.py exists
+#   make twin-replay [SATS=A-L]     alias of `make twin` (twin/service.py, mk/twin.mk)
 #   make core [SATS=A-L]            the CASSANDRA core; satellites not in SATS get the board profile
 #   make demo-sw [SATS=A-L SPEED=1] up + plant + core in one terminal; Ctrl-C stops both
 #                                   with the board as B: make demo-sw SATS=A,C-L (bridge runs on Windows)
@@ -21,7 +21,7 @@ ATTACK_ARGS ?=
 BRIDGE_ARGS ?=
 SCENARIOS = A1 B1 C1 N F1 F2 F3 F4 F5
 SCENARIO ?= $(or $(firstword $(filter $(SCENARIOS),$(MAKECMDGOALS))),A1)
-TWIN = $(PY) -u scripts/replay_twin.py --sats $(SATS) --speed $(SPEED) --seed $(SEED)
+TWIN = $(PY) -u -m twin.service --sats $(SATS) --speed $(SPEED) --seed $(SEED)
 CORE = $(PY) -u -m cassandra --twin-sats $(SATS)
 
 .PHONY: up down reset tail bus-check twin-replay core demo-sw demo-board-dry bridge-dry attack attack-stop $(SCENARIOS)
@@ -55,7 +55,7 @@ demo-sw: up
 	$(PY) scripts/launch.py "twin=$(TWIN)" "core=$(CORE)"
 
 demo-board-dry: up
-	$(PY) scripts/launch.py "twin=$(PY) -u scripts/replay_twin.py --sats A,C-L --speed 1 --seed $(SEED)" \
+	$(PY) scripts/launch.py "twin=$(PY) -u -m twin.service --sats A,C-L --speed 1 --seed $(SEED)" \
 	  "core=$(PY) -u -m cassandra --twin-sats A,C-L" "board=$(PY) -u hardware/esp8266_bridge/bridge.py --dry-run --sat B $(BRIDGE_ARGS)"
 
 bridge-dry:
