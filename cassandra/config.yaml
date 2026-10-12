@@ -14,7 +14,9 @@ satellites:
     t_max_c: 45.0
     soc_min_pct: 30.0
     theta_max_deg: 10.0
-    heating_rate_c_s: 0.2         # twin heater (50-90 W into 300 J/K) near room temperature; a modelling value
+    heating_rate_c_s: 0.3         # used only when temp_c is untrusted: the FASTEST plausible heating of a twin
+                                  # satellite (90 W heater into 300 J/K near 20 C, about 0.32 C/s), so the
+                                  # estimate errs early. 0.2 lagged a fast heater in B1 seed 1 (crossed by 0.3 C)
     heater_min_rise_c_s: 0.02     # heater on but temp_c rising slower than this = inconsistent telemetry
     heal_below_c: 30.0            # heal only once temp_c is back under this (Phase 2 predictor: < 30 C)
   overrides: {}

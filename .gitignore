@@ -82,4 +82,8 @@ Thumbs.db
 
 # ===== Logs / results (generated, not source) =====
 *.log
-results/
+results/*
+# exceptions: the small manifests that say which run produced the numbers (MASTER_PLAN rule 6)
+!results/manifest.json
+!results/live_manifest.json
+!results/live_manifest_heat0.2.json

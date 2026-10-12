@@ -109,6 +109,10 @@ def live_run(attack_steps: list[list[str]], seed: int = 3, settle_sim_s: int = 6
     plant = None
     try:
         assert core.ready("CASSANDRA core running"), core.log()
+        # Retained node states of earlier runs arrive right after subscribing. The t filter alone does
+        # not catch them: a plant at 20x stamps simulated time, which runs ahead of the wall clock.
+        with lock:
+            seen["state"].clear()
         plant = Proc(
             "plant",
             ["scripts/replay_twin.py", "--speed", str(SPEED), "--duration", "1800", "--seed", str(seed)],
