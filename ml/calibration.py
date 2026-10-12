@@ -1,9 +1,41 @@
-"""Calibration of P(F < t + D) (CONTEXT 5.5): temperature scaling on validation, ECE with 10 bins."""
+"""Calibration of P(F < t + D) (CONTEXT 5.5): temperature scaling on validation, ECE with 10 bins.
+
+data/models/calibration.json (M5) travels with the .pt files: eval.harness writes it where the
+temperature and tau are fitted, the model bundle (ml/export.py --bundle) ships it, and
+OnlineForecaster and cassandra/forecast.py refuse to run the ensemble without it.
+"""
 
 from __future__ import annotations
 
+import subprocess
+
 import numpy as np
 import torch
+
+from ml import config
+
+
+def git_version() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--always", "--dirty"], cwd=config.ROOT, capture_output=True, text=True
+        )
+        return out.stdout.strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+def calibration_record(temperature: float, tau: float, models: list[str], ev: dict) -> dict:
+    """Content of data/models/calibration.json: temperature and the ensemble's alert threshold tau at
+    the primary horizon, chosen on validation benign timesteps at the target false-positive rate."""
+    return {
+        "temperature": float(temperature),
+        "tau": float(tau),
+        "horizon_s": int(ev["primary_horizon_s"]),
+        "fpr_target": float(ev["target_fpr"]),
+        "models": list(models),
+        "git": git_version(),
+    }
 
 
 def fit_temperature(bin_logits: np.ndarray, y: np.ndarray, m: np.ndarray) -> float:

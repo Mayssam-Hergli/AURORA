@@ -49,6 +49,8 @@ def test_a1_on_the_board_dry_run():
     try:
         assert core.ready("CASSANDRA core running"), core.log()
         assert any("trajectory-v0 for hardware B" in ln for ln in core.lines), core.log()
+        with lock:  # retained states of earlier (accelerated, future-stamped) runs: not this run's
+            seen["B"].clear()
         plant = Proc(
             "plant", ["scripts/replay_twin.py", "--sats", "A,C-L", "--speed", "1", "--duration", "600"]
         )

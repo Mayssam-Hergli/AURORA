@@ -54,7 +54,7 @@ def main() -> int:
                     "realized_fpr_pct": round(100 * v["realized_fpr"], 3),
                     "auroc": round(v.get("auroc", float("nan")), 4),
                     "pre_onset_alarm_per_sat_hour": round(
-                        v.get("pre_onset", {}).get("per_sat_hour", float("nan")), 3
+                        v.get("pre_onset_false_alarms_per_sat_hour", float("nan")), 3
                     ),
                 }
                 for k, v in R["methods"].items()
@@ -128,6 +128,11 @@ def main() -> int:
             "is not shown.",
             "Overnight run 11-12 Oct: generate failed once on test_real (OPS-SAT noise bank race, fixed); "
             "test_real was regenerated with the same seeds and the pipeline re-run from evaluate.",
+            "12 Oct midday: re-run from evaluate (same models, same predictions) after the M3 definition was "
+            "corrected in the merge with Youssef's branch: a pre-onset alarm is a false alarm and earns no "
+            "detection or lead (the overnight version counted it, inflating GDN and LSTM-AE leads).",
+            "Latency and planning times depend on machine load: three runs on the same laptop gave 18.4, "
+            "34.1 and 17.6 ms median ensemble inference (5 models, 1 thread); quote the range.",
         ],
         "results_files": {
             "metrics": "results/eval/metrics.json",

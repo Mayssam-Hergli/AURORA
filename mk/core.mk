@@ -72,4 +72,4 @@ $(SCENARIOS):    # lets `make attack A1 TARGET=E` name the scenario as a goal
 
 .PHONY: dashboard
 dashboard:       ## single-page dashboard on http://localhost:8080 (needs make up + a running core)
-	$(PY) -m http.server 8080 --directory dashboard
+	$(PY) -m http.server 8080 --bind 127.0.0.1 --directory dashboard

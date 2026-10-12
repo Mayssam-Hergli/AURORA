@@ -1,8 +1,8 @@
 {
- "written_at": "2026-10-12T03:36:56+0100",
+ "written_at": "2026-10-12T13:16:43+0100",
  "git": {
-  "commit": "f03130b",
-  "branch": "p7-dashboard",
+  "commit": "596a08a",
+  "branch": "p9-integration",
   "dirty": true
  },
  "machine": {
@@ -58,9 +58,9 @@
    "tau": 0.015277743339538574,
    "fpr_target": 0.001,
    "n_models": 5,
-   "git": "1b8847a",
+   "git": "596a08a",
    "source": "eval.harness",
-   "written_at": "2026-10-12T02:31:52+0100"
+   "written_at": "2026-10-12T12:20:37+0100"
   }
  },
  "commands": [
@@ -188,13 +188,57 @@
    "end": "2026-10-12T03:25:31+01:00",
    "seconds": "62",
    "exit": "0"
+  },
+  {
+   "step": "evaluate",
+   "start": "2026-10-12T12:19:31+01:00",
+   "end": "2026-10-12T12:20:38+01:00",
+   "seconds": "67",
+   "exit": "0"
+  },
+  {
+   "step": "closed_loop",
+   "start": "2026-10-12T12:20:38+01:00",
+   "end": "2026-10-12T12:26:40+01:00",
+   "seconds": "362",
+   "exit": "0"
+  },
+  {
+   "step": "robustness",
+   "start": "2026-10-12T12:26:40+01:00",
+   "end": "2026-10-12T12:43:03+01:00",
+   "seconds": "983",
+   "exit": "0"
+  },
+  {
+   "step": "stress",
+   "start": "2026-10-12T12:43:03+01:00",
+   "end": "2026-10-12T12:49:50+01:00",
+   "seconds": "407",
+   "exit": "0"
+  },
+  {
+   "step": "export",
+   "start": "2026-10-12T12:49:50+01:00",
+   "end": "2026-10-12T12:49:57+01:00",
+   "seconds": "7",
+   "exit": "0"
+  },
+  {
+   "step": "figures",
+   "start": "2026-10-12T12:49:57+01:00",
+   "end": "2026-10-12T12:50:03+01:00",
+   "seconds": "6",
+   "exit": "0"
   }
  ],
  "notes": [
   "Simulation only: synthetic 12-satellite episodes (ml/synthetic), not hardware or flight data.",
   "Closed loop: the sandbox uses the simulator as its model, so 'prevented' is an upper bound.",
   "Benchmark saturates: every ablation reaches recall 1.00, so the benefit of the graph structure is not shown.",
-  "Overnight run 11-12 Oct: generate failed once on test_real (OPS-SAT noise bank race, fixed); test_real was regenerated with the same seeds and the pipeline re-run from evaluate."
+  "Overnight run 11-12 Oct: generate failed once on test_real (OPS-SAT noise bank race, fixed); test_real was regenerated with the same seeds and the pipeline re-run from evaluate.",
+  "12 Oct midday: re-run from evaluate (same models, same predictions) after the M3 definition was corrected in the merge with Youssef's branch: a pre-onset alarm is a false alarm and earns no detection or lead (the overnight version counted it, inflating GDN and LSTM-AE leads).",
+  "Latency and planning times depend on machine load: three runs on the same laptop gave 18.4, 34.1 and 17.6 ms median ensemble inference (5 models, 1 thread); quote the range."
  ],
  "results_files": {
   "metrics": "results/eval/metrics.json",
@@ -211,7 +255,7 @@
     "median_lead_s": 133.0,
     "iqr_lead_s": [
      114.0,
-     163.0
+     162.0
     ],
     "realized_fpr_pct": 0.15,
     "auroc": 0.9992,
@@ -221,8 +265,8 @@
     "recall": 1.0,
     "median_lead_s": 133.0,
     "iqr_lead_s": [
-     115.0,
-     166.0
+     114.0,
+     165.0
     ],
     "realized_fpr_pct": 0.148,
     "auroc": 0.9989,
@@ -244,7 +288,7 @@
     "median_lead_s": 132.0,
     "iqr_lead_s": [
      112.0,
-     164.0
+     161.0
     ],
     "realized_fpr_pct": 0.154,
     "auroc": 0.999,
@@ -252,9 +296,9 @@
    },
    "no_residual": {
     "recall": 1.0,
-    "median_lead_s": 134.0,
+    "median_lead_s": 133.0,
     "iqr_lead_s": [
-     112.0,
+     109.0,
      163.0
     ],
     "realized_fpr_pct": 0.133,
@@ -263,10 +307,10 @@
    },
    "unconstrained": {
     "recall": 1.0,
-    "median_lead_s": 135.0,
+    "median_lead_s": 134.0,
     "iqr_lead_s": [
      114.0,
-     169.0
+     161.0
     ],
     "realized_fpr_pct": 0.168,
     "auroc": 0.9991,
@@ -276,7 +320,7 @@
     "recall": 0.898,
     "median_lead_s": 49.0,
     "iqr_lead_s": [
-     9.75,
+     9.0,
      79.0
     ],
     "realized_fpr_pct": 0.18,
@@ -288,29 +332,29 @@
     "median_lead_s": 20.0,
     "iqr_lead_s": [
      18.0,
-     25.0
+     24.25
     ],
     "realized_fpr_pct": 0.097,
     "auroc": 0.7849,
     "pre_onset_alarm_per_sat_hour": 0.563
    },
    "lstm_ae": {
-    "recall": 0.38,
-    "median_lead_s": 204.5,
+    "recall": 0.346,
+    "median_lead_s": 197.0,
     "iqr_lead_s": [
-     161.25,
-     253.25
+     160.0,
+     239.0
     ],
     "realized_fpr_pct": 0.086,
     "auroc": 0.9112,
     "pre_onset_alarm_per_sat_hour": 0.431
    },
    "gdn": {
-    "recall": 0.8,
-    "median_lead_s": 222.0,
+    "recall": 0.688,
+    "median_lead_s": 167.0,
     "iqr_lead_s": [
-     154.75,
-     307.25
+     130.0,
+     208.0
     ],
     "realized_fpr_pct": 0.188,
     "auroc": 0.8355,
@@ -336,10 +380,10 @@
   "test_ood": {
    "ensemble": {
     "recall": 1.0,
-    "median_lead_s": 139.0,
+    "median_lead_s": 135.0,
     "iqr_lead_s": [
      111.0,
-     196.0
+     195.0
     ],
     "realized_fpr_pct": 0.084,
     "auroc": 0.9967,
@@ -350,7 +394,7 @@
     "median_lead_s": 138.0,
     "iqr_lead_s": [
      115.0,
-     200.0
+     196.0
     ],
     "realized_fpr_pct": 0.1,
     "auroc": 0.9967,
@@ -369,10 +413,10 @@
    },
    "no_eng": {
     "recall": 0.903,
-    "median_lead_s": 135.0,
+    "median_lead_s": 134.5,
     "iqr_lead_s": [
      117.0,
-     187.5
+     184.0
     ],
     "realized_fpr_pct": 0.096,
     "auroc": 0.9934,
@@ -380,10 +424,10 @@
    },
    "no_residual": {
     "recall": 1.0,
-    "median_lead_s": 143.0,
+    "median_lead_s": 142.0,
     "iqr_lead_s": [
      118.0,
-     196.0
+     192.0
     ],
     "realized_fpr_pct": 0.103,
     "auroc": 0.9963,
@@ -391,10 +435,10 @@
    },
    "unconstrained": {
     "recall": 1.0,
-    "median_lead_s": 136.0,
+    "median_lead_s": 135.0,
     "iqr_lead_s": [
      115.0,
-     194.0
+     192.0
     ],
     "realized_fpr_pct": 0.108,
     "auroc": 0.9972,
@@ -412,33 +456,33 @@
     "pre_onset_alarm_per_sat_hour": 0.23
    },
    "trajectory": {
-    "recall": 0.876,
+    "recall": 0.867,
     "median_lead_s": 23.0,
     "iqr_lead_s": [
      19.0,
-     31.5
+     30.75
     ],
     "realized_fpr_pct": 0.092,
     "auroc": 0.7868,
     "pre_onset_alarm_per_sat_hour": 0.584
    },
    "lstm_ae": {
-    "recall": 0.442,
-    "median_lead_s": 235.0,
+    "recall": 0.407,
+    "median_lead_s": 226.0,
     "iqr_lead_s": [
-     161.5,
-     308.0
+     160.25,
+     267.75
     ],
     "realized_fpr_pct": 0.074,
     "auroc": 0.9226,
     "pre_onset_alarm_per_sat_hour": 0.399
    },
    "gdn": {
-    "recall": 0.823,
-    "median_lead_s": 250.0,
+    "recall": 0.726,
+    "median_lead_s": 181.5,
     "iqr_lead_s": [
-     161.0,
-     349.0
+     137.25,
+     260.0
     ],
     "realized_fpr_pct": 0.193,
     "auroc": 0.8374,
@@ -544,7 +588,7 @@
     "median_lead_s": 23.0,
     "iqr_lead_s": [
      22.0,
-     30.25
+     30.0
     ],
     "realized_fpr_pct": 0.084,
     "auroc": 0.7604,
@@ -562,11 +606,11 @@
     "pre_onset_alarm_per_sat_hour": 0.478
    },
    "gdn": {
-    "recall": 0.884,
-    "median_lead_s": 253.0,
+    "recall": 0.71,
+    "median_lead_s": 194.0,
     "iqr_lead_s": [
-     167.0,
-     321.0
+     139.0,
+     259.0
     ],
     "realized_fpr_pct": 0.194,
     "auroc": 0.8684,
@@ -604,9 +648,9 @@
    "isolate_subsystem": 11
   },
   "gated": 1,
-  "step_ms_median": 44.765786750076586,
-  "plan_ms_median": 461.4572149998821,
-  "plan_ms_p95": 488.1996597503985,
+  "step_ms_median": 22.425482750037418,
+  "plan_ms_median": 253.9601814999628,
+  "plan_ms_p95": 401.98395780003005,
   "note": "sandbox uses the simulator as its state-transition model: an upper bound"
  },
  "robustness": {
@@ -761,8 +805,8 @@
   {
    "threads": 1,
    "ensemble_size": 5,
-   "median_ms": 34.11681699981273,
-   "p95_ms": 53.977866099648935,
+   "median_ms": 17.588892000048872,
+   "p95_ms": 20.90714885011948,
    "machine": "x86_64",
    "processor": "x86_64",
    "note": "inference only; add the sandbox planning time for the 150 ms budget"
@@ -770,8 +814,8 @@
   {
    "threads": 4,
    "ensemble_size": 5,
-   "median_ms": 30.145174499921268,
-   "p95_ms": 35.178447049656825,
+   "median_ms": 21.945214999959717,
+   "p95_ms": 40.009305850003315,
    "machine": "x86_64",
    "processor": "x86_64",
    "note": "inference only; add the sandbox planning time for the 150 ms budget"

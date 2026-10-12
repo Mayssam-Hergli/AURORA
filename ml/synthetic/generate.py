@@ -54,6 +54,13 @@ def _one(args):
     )
 
 
+def opssat_available() -> bool:
+    """S7: test_real needs OPS-SAT-AD (segments.csv or a built noise bank)."""
+    from eval.datasets.opssat import BANK, SRC
+
+    return BANK.exists() or (SRC / "segments.csv").exists()
+
+
 def generate(split: str, n: int | None = None, workers: int = 4) -> pd.DataFrame:
     cfg = config.load("synthetic")
     n = n or cfg["splits"][split]
@@ -73,13 +80,6 @@ def generate(split: str, n: int | None = None, workers: int = 4) -> pd.DataFrame
     return index
 
 
-def _opssat_available() -> bool:
-    """S7: test_real needs OPS-SAT-AD (segments.csv or a built noise bank)."""
-    from eval.datasets.opssat import BANK, SRC
-
-    return BANK.exists() or (SRC / "segments.csv").exists()
-
-
 def main(argv=None):
     cfg = config.load("synthetic")
     ap = argparse.ArgumentParser()
@@ -88,10 +88,10 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=4)
     a = ap.parse_args(argv)
     for split in [a.split] if a.split else list(cfg["splits"]):
-        if split == "test_real" and not _opssat_available():
+        if split == "test_real" and not opssat_available():
             print(
-                "test_real  skipped: the OPS-SAT-AD real-noise data is not downloaded "
-                "(run `make data`, then `python -m ml.synthetic.generate --split test_real`)",
+                "test_real skipped: it replays real OPS-SAT noise and data/opssat-ad/ is missing "
+                "(make data, or python -m eval.datasets.download opssat)",
                 flush=True,
             )
             continue

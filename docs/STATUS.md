@@ -1,4 +1,54 @@
-# AURORA status. Updated 2026-10-12 (overnight run by Claude Code for Mayssam Hergli)
+# AURORA status. Updated 2026-10-12 midday (Claude Code for Mayssam Hergli)
+
+# Midday update (12 Oct): Youssef's branches integrated
+
+Youssef pushed his own `p2-ml-fixes`, `p3-twin` and `p7-dashboard` (base `c66f4c4`). They cover the same three phases we built overnight, done in parallel, and 24 files are touched by both. **Decision (Mayssam): our chain is the base, his work is merged onto it, and his dashboard replaces ours.** Everything is on the new local branch **`p9-integration`** (on top of `p7-dashboard`). Nothing has been pushed; `main` and his remote branches are untouched.
+
+Checked first: his branch alone passes all its non-broker tests on Python 3.11 (he could only run 3.14). Our core on his `ml/` as-is failed (4 failures, 11 errors), because our shadow geometry needs `seed_from_observation(..., hold_geometry, t_index)`. So this needed a real merge, not a swap.
+
+**Taken from Youssef**
+- `make models` (SHA-256-checked download) and `ml.export --bundle`. The pin now points to a **models-v2** release, which is our 12 Oct retrain; v1 (the PR #1 models) stays on its own release. The bundle is built: `dist/aurora-models-v2.zip`, sha256 `87253c74…bff7`. It is reproducible: the same files give the same zip. **[HUMAN] Upload it** (command below), otherwise `make models` returns 404.
+- `ml/online.py` and `ml/schema.py` as-is:
+  - The no-model fallback ignores channels not yet received. Our fallback gave P = 1 on a thermal-only board, because SOC held at 0 read as below SOC_min.
+  - Forecast messages carry `q` and `warming_up`.
+  - `from_models()` without models falls back instead of raising.
+- His regression tests, `tests/test_ml_review_fixes.py` (M1–M5, S1–S4, S7, S9, S10) and `tests/test_online_live.py`, all pass on the merged code. Our four tests that duplicated his (M3, M5, S1, S7) were removed.
+- 3-way merges (base `c66f4c4`) of `features.py`, `calibration.py`, `train.py`, `generate.py`, `metrics.py`, `harness.py` and `closed_loop.py`. In `closed_loop.py` ours was kept: R = sum of risks, as in the core.
+- **One `seed_from_observation`.** We had both written one, and a plain merge silently kept two, with his overriding ours. The merged hook:
+  - accepts his WorldTick shape and our flat shape;
+  - keeps our `hold_geometry`, `t_index` and `disabled`;
+  - adopts his fault/block/anomaly reset, ADCS and OBC counters, thermostat rule and `QUARANTINED` mode.
+- **One SAFE rule:** `ml.synthetic.engine.refused_in_safe(cmd, args, origin)`, called by the engine, the twin service and the core sandbox. The board bridge keeps its own copy because it runs without the repo's dependencies.
+- His **dashboard** (uPlot, 3 views):
+  - Its `act: 0.85 "flagged -> quarantined"` line is corrected to a **plan line at 0.50 ("J decides")**.
+  - `make dashboard` binds to 127.0.0.1.
+  - New targets: `make dashboard-test` and `make tc`. `tests/test_dashboard.py` runs his Node tests from pytest.
+- From his twin: **`gt/event critical`**, which ours lacked; it is now in `twin/service.py`.
+
+**Bugs found and fixed while integrating**
+1. **M3 (honesty; numbers changed).** Our overnight M3 change counted a pre-onset false alarm as a detection *with lead time*. His definition is the one merged: an alert before onset is a false alarm, and detection and lead start at onset. I re-ran evaluate through figures with the same models and predictions:
+   - GDN: 0.80 / 222 s → **0.69 / 167 s**.
+   - LSTM-AE: 0.38 / 205 s → **0.35 / 197 s**.
+   - Ensemble OOD lead: 139 s → **135 s**. Ensemble ID and Real are unchanged.
+
+   The corrected values equal PR #1's original report for those baselines, so they did not "improve" overnight. The Numbers section is updated.
+2. **Inverted flag hysteresis (core).** Ensemble satellites flag at tau ≈ 0.015 but un-flagged only below calm_p = 0.10, so P = 0.03 was both a flag and calm. In the browser, E flapped between flagged and nominal 3 times before the action. A satellite now un-flags only below min(calm_p, half its flag threshold); trajectory behaviour is unchanged. Test added.
+3. **Spurious "frozen" masking alarm on every satellite (core).** When the core caught up on several ticks at once (20x plant, core near its 50 ms budget), each tick re-read the same message. The monitor saw 10 identical readings, which is its masking signature, and flagged all 12 satellites. It now counts distinct messages (message time from the tick's age), not ticks. Test added.
+4. **The recorder labelled critical times from reported telemetry**, which a B1 freeze hides. It now uses the twin's `gt/event critical` (the true crossing) and falls back to telemetry only where there is no truth (the board). Test with a B1 freeze added.
+5. Core flag messages printed tau unrounded (`>= 0.015277743339538574`); they now show 3 significant digits.
+6. The board dry-run integration test had the retained-state problem fixed this morning in the A1 test; same fix applied.
+
+**Evidence**
+- **Tests:** 181 pass (WSL, Python 3.11.17, broker up, models present, integration tests included); `make lint` is clean.
+- **Pipeline:** re-run from evaluate, every step exit 0 (`pipeline_times.tsv`, 12:20–12:50).
+- **Phase 6:** re-run on the final code (`results/live_manifest.json`). The outcomes are identical:
+  - 12/12 runs within limits;
+  - C1 source quarantined in 2 of 3 seeds;
+  - the brief false flag in C1 seed 1 is now one flag instead of two flaps.
+- **Dashboard, checked in Chrome** (headless, real bus, live core, 1,500 msg/s): A1 on E shows flagged, then `ISOLATE_SUBSYSTEM E` with J 0.13 and alternatives safe_mode 0.16 / quarantine 0.22 / none 0.62, with the cause and IA-0009, then healed.
+
+**Reply to Youssef:** drafted for Mayssam (not sent).
+
 
 # Morning report (12 Oct)
 
@@ -27,22 +77,23 @@ Final test state (WSL, `~/aurora-venv`, Python 3.11.17, models present): all non
 - **B1, seed 1 reached the limit (fixed, both results kept).** In the first Phase 6 pass E crossed 45 °C (action at 45.17 °C, max 45.32 °C). The cause: while `temp_c` is untrusted (frozen) the core estimates temperature with `heating_rate_c_s` 0.2 °C/s, but the twin heater warms up to ~0.3 °C/s near room temperature, so the estimate lagged. Fix: `heating_rate_c_s: 0.3` (the fastest plausible rate, so the estimate errs early). The re-run had all 12 runs within limits: B1 actions at 75 / 55 / 75 s after the attack, max 36.5 / 32.1 / 25.1 °C. Old run: `results/live_manifest_heat0.2.json`; new: `results/live_manifest.json`.
 - **Pipeline first pass:** `generate` failed on `test_real` (`BadZipFile`, a race in the OPS-SAT noise bank, bug from PR #1); evaluate / robustness / stress / figures failed after it. The race was fixed, `test_real` regenerated with the same seeds, and the pipeline re-run from `evaluate`; every step of the second pass exited 0 (`pipeline_times.tsv` keeps both passes).
 - **Integration tests failed once after Phase 6 (test bug, fixed).** The plant at 20x stamps simulated time, which runs ahead of the wall clock, so retained node states from earlier runs passed the test's time filter and ended the wait early. The test now discards states received before the core is up. Not a core bug: in process, the ensemble core raises no flag on a clean replay (checked).
-- **Open MCT skipped:** the single-page dashboard (MASTER_PLAN fallback) was built instead. **Not checked in a real browser**, only the data path and the store logic (node test).
-- **Closed-loop planning is over budget offline:** the `eval/closed_loop.py` sandbox planning median is 461 ms (p95 488 ms) against the 150 ms budget. The live core plans in 63–105 ms (Phase 6 medians), so this concerns the offline evaluator's planner.
+- **Open MCT skipped:** the single-page dashboard (MASTER_PLAN fallback) was built instead. *(Midday: replaced by Youssef's single-page dashboard, checked in Chrome against the live core.)*
+- **Closed-loop planning is over budget offline:** the `eval/closed_loop.py` sandbox planning median is 461 ms (p95 488 ms) against the 150 ms budget (midday re-run, under less load: 254 ms / 402 ms). The live core plans in 63–105 ms (Phase 6 medians), so this concerns the offline evaluator's planner.
 - **Not done (needs you or a screen):** real-board bring-up, the backup demo recording, browser check of the dashboard, and the paper text (`docs/paper/` does not exist in the repo; every number is in this file and in `results/manifest.json`).
 - **Not done (out of time and scope):** Open MCT, contract v1.3 fault effects, the C1 objective change (see Open questions).
 
-## Push commands (Git Bash, in this order; nothing is pushed yet)
+## Push commands (Git Bash; nothing is pushed yet; replaced at midday)
+**Do not push our local `p2-ml-fixes`, `p3-twin` or `p7-dashboard` under those names.** Youssef's branches with the same names are on GitHub with a different history: the push would be rejected, and it must never be forced. `p9-integration` contains all of our commits plus the merge, so it is the one to push:
 ```bash
 cd /c/Users/USER/AURORA
-git push origin p4-core              # already tracks origin/p4-core (3 commits ahead)
-git push -u origin p8-board
-git push -u origin p2-ml-fixes
-git push -u origin p5-scenarios
-git push -u origin p3-twin
-git push -u origin p7-dashboard
+git push origin p4-core              # fast-forward of origin/p4-core: the core main loop Youssef asked for
+git push -u origin p8-board          # new on GitHub
+git push -u origin p5-scenarios      # new on GitHub: attacks A1/B1/C1/F1/N
+git push -u origin p9-integration    # everything, merged with Youssef's work
+# [HUMAN] the models-v2 release that `make models` downloads (GitHub CLI):
+gh release create models-v2 dist/aurora-models-v2.zip --title "models-v2 (12 Oct retrain)" --notes "5-seed ensemble + calibration.json (T 0.730, tau 0.0153). sha256 87253c7408976cf9b40100997aa84ee75d9b3783cfef16e75292c560e547bff7. Numbers: results/manifest.json"
 ```
-Each branch contains the one before it, so the order only keeps every intermediate ref meaningful on GitHub. No PRs, no merge into `main`.
+No PRs, no merge into `main`.
 
 ## 5 commands to start hardware bring-up (details: `hardware/BRINGUP.md`)
 ```bash
@@ -111,14 +162,14 @@ Ownership: since the night of 11 Oct, **Mayssam owns every lane** again (Youssef
 | Interface contract | `docs/interfaces.md`, `aurora_common/` | Mayssam | done (G1), frozen v1.2 (SPARTA mapping per P4; SAFE semantics) | `pytest tests/test_schemas.py tests/test_topics.py` |
 | MQTT broker | `ground/`, `mk/core.mk` | Mayssam | done (G1): Mosquitto 1883 + 9001, reachable from Windows | `make up && make bus-check` |
 | CASSANDRA core | `cassandra/` | Mayssam | done: ingest, forecast (ensemble for twin satellites, trajectory for the board), monitor, sandbox (real engine hooks), act with escalation, explain, main loop | `pytest tests/cassandra tests/integration`; Phase 6 |
-| Twin (plant) | `twin/service.py` (`scripts/replay_twin.py` alias), `twin/recorder.py` | Mayssam (was Youssef) | done (`p3-twin`): real engine on the bus, red-team effects, faults, recorder | `tests/test_twin_service.py`, `tests/test_replay_twin.py` |
+| Twin (plant) | `twin/service.py` (`scripts/replay_twin.py` alias), `twin/recorder.py` | Mayssam + Youssef | done (`p3-twin`, merged in `p9-integration`): real engine on the bus, red-team effects, faults, `gt/event critical`, recorder labels from truth | `tests/test_twin_service.py`, `tests/test_replay_twin.py` |
 | Live attack scripts | `attacks/` | Mayssam | done: A1 (`--reassert`), B1, C1, F1, N, `--stop`; ground truth on `gt/` only | `make attack A1 TARGET=E` |
 | ESP8266 board as satellite B | `hardware/`, `prototype/phase2-demo/` | Mayssam | software done (`p8-board`); **real-board bring-up pending** | `tests/hardware/`, `tests/integration/test_board_dry_run.py`; `hardware/BRINGUP.md` |
 | Demo script, preflight, backup recording | `docs/DEMO_SCRIPT.md`, `scripts/preflight.sh` | Mayssam | draft script + preflight done; recording missing | `bash scripts/preflight.sh` |
-| Learned forecaster, baselines, calibration | `ml/` | Mayssam (was Youssef) | done: M1–M5, S1–S4, S6, S7, S10 fixed; retrained 12 Oct | `tests/test_ml_fixes.py`; `results/manifest.json` |
+| Learned forecaster, baselines, calibration | `ml/` | Mayssam + Youssef | done: M1–M5, S1–S4, S6, S7, S9, S10 fixed (both branches merged); retrained 12 Oct; `make models` (v2 release pending upload) | `tests/test_ml_fixes.py`, `tests/test_ml_review_fixes.py`, `tests/test_online_live.py`; `results/manifest.json` |
 | Evaluation harness | `eval/` | Mayssam (was Youssef) | done: oracle removed (M1, M2), T_alert fixed (M3), pre-onset alarms reported | `results/eval/*.json` |
 | Synthetic episode generator | `ml/synthetic/` | Mayssam (was Youssef) | done, plus engine hooks `snapshot(include_queue=False)`, `seed_from_observation(obs)` | `tests/test_synthetic_and_schema.py`, `tests/test_ml_fixes.py` |
-| Dashboard | `dashboard/` | Mayssam (was Youssef) | single page done (`p7-dashboard`); browser check pending; Open MCT skipped | `tests/dashboard/`; `make dashboard` |
+| Dashboard | `dashboard/` | Youssef | single page (his, uPlot, 3 views; in `p9-integration`); checked in Chrome against the live core 12 Oct; Open MCT skipped | `make dashboard-test` / `tests/test_dashboard.py`; `make dashboard` |
 | Paper source and numbers | `docs/paper/` | Mayssam (was Youssef) | paper source not in repo; numbers ready here and in `results/manifest.json` | — |
 | Trained models, results | `data/models/`, `results/` | Mayssam | done locally (gitignored except the manifests) | `results/manifest.json` |
 
@@ -132,15 +183,15 @@ All simulation. Pipeline numbers: `bash scripts/overnight_pipeline.sh` (second p
 | Metric | Old (PR #1) | New | Source |
 |---|---|---|---|
 | Ensemble recall / median lead at 0.1 % FPR, ID | 1.00 / 133 s | **1.00 / 133 s** (IQR 114–163), realised FPR 0.15 %, AUROC 0.999 | `results/eval/metrics.json` |
-| Ensemble, OOD | 1.00 / 135 s | **1.00 / 139 s** | same |
+| Ensemble, OOD | 1.00 / 135 s | **1.00 / 135 s** (139 s overnight, before the M3 correction) | same |
 | Ensemble, Real (OPS-SAT noise) | 1.00 / 162 s | **1.00 / 158 s** | same |
 | Threshold baseline | 0.90 / 49 s | 0.90 / 49 s (Real: 0.59 / 84 s) | same |
 | Trajectory baseline | 0.86 / 20 s | 0.86 / 20 s (Real: 0.58 / 23 s) | same |
-| LSTM-AE | 0.34 / 187 s | 0.38 / 205 s | same |
-| GDN | 0.68 / 167 s | 0.80 / 222 s, but **6.5 pre-onset alarms per satellite-hour** (others ≤ 0.6) | same (`pre_onset`, M3) |
+| LSTM-AE | 0.34 / 187 s | 0.35 / 197 s (overnight 0.38 / 205 s counted pre-onset alarms, M3) | same |
+| GDN | 0.68 / 167 s | 0.69 / 167 s, and **6.5 pre-onset false alarms per satellite-hour** (others ≤ 0.6); overnight 0.80 / 222 s counted those alarms as detections (M3, corrected) | same (`pre_onset_false_alarms_per_sat_hour`) |
 | Ensemble at the core's act thresholds (`ensemble@act`) | not reported | 0.89 / 38 s (OOD 0.74 / 36 s, Real 0.70 / 40 s) | same |
 | Closed loop: failures averted | 61 % (inflated: oracle in simulator safe mode, M1) | **72 % (13 of 18 failing episodes; 95 % Wilson CI 49–87 %)**, 0 new failures, availability 0.999, 1 false containment (0.05 per orbit) | `results/eval/closed_loop.json` (`python -m eval.closed_loop --episodes 24`) |
-| Inference latency, 5 models, 1 thread, x86 | 30.6 ms | 34.1 ms median, 54.0 ms p95 (4 threads: 30.1 / 35.2 ms) | `results/latency.json` (`python -m ml.export`) |
+| Inference latency, 5 models, 1 thread, x86 | 30.6 ms | **17.6–34.1 ms median** over three runs on this laptop (18.4, 34.1, 17.6 ms; the spread is machine load); latest 17.6 ms median, 20.9 ms p95 | `results/latency.json` (`python -m ml.export`) |
 
 How to read the closed-loop line honestly: the old 61 % and the new 72 % are **not comparable** and neither is a field result. The old run let the simulator's safe mode delete malicious commands by their hidden label (M1); the new run has no oracle but still plans with the simulator as its own model (upper bound), on 24 episodes (18 failing without a response), hence the wide interval. Say "in simulation, about 7 in 10 failures averted, upper bound" or give 13/18 with the interval.
 
@@ -173,7 +224,7 @@ How to read the closed-loop line honestly: the old 61 % and the new 72 % are **n
 | C1 seed 2 (source D) | D; victims G, L | **quarantine D** at 137 s; victims isolated 120–134 s | | 33.5–37.2 °C | ≤ 37.4 °C | victims healed; D held quarantined for ground |
 | C1 seed 3 (source K) | K; victim E | **quarantine K** at 57 s; E isolated at 120 s | | 38.8 °C | 39.0 °C | E healed; K held quarantined |
 
-No satellite reached its limit and no non-attacked satellite was contained in any run of the second pass. Core timing: tick median 31–38 ms, planning median 63–105 ms per run (laptop, WSL, ensemble). First pass (rate 0.2): `results/live_manifest_heat0.2.json`.
+No satellite reached its limit and no non-attacked satellite was contained in any run of the second pass. Core timing: tick median 28–36 ms, planning median 61–89 ms per run (laptop, WSL, ensemble; midday re-run on `p9-integration`, same outcomes as the morning run). First pass (rate 0.2): `results/live_manifest_heat0.2.json`.
 
 ### Earlier numbers (trajectory forecaster, 11 Oct; still valid for the board profile)
 | Metric | Value | Source |

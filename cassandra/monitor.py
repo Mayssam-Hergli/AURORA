@@ -4,7 +4,8 @@ possible given its other channels?
 Rule `heater_inconsistent`: heater_on = 1 for the whole window, yet the reported temp_c does not rise
 (least-squares slope below the satellite's heater_min_rise_c_s). A frozen or replayed temperature
 under a running heater looks exactly like this. Works with noisy and exact freezes alike.
-Rule `frozen`: temp_c identical for the whole window. A real, noisy sensor never does that.
+Rule `frozen`: temp_c identical over the window's messages (distinct message times, not ticks).
+A real, noisy sensor never does that.
 
 A hit marks temp_c untrusted for that satellite; forecast.py then estimates the temperature from the
 heater's on-time instead of the reported value. The channel is trusted again after `recover_s`
@@ -58,9 +59,15 @@ class Monitor:
             if th is None:
                 h.clear()  # a gap breaks the window; stale data is ingest's business
                 continue
-            if h and tick.t - h[-1][0] > 1.5:
+            # The window holds *messages*, not ticks: when the core catches up on several ticks at once,
+            # or a value is held between messages, the same message would otherwise repeat and look
+            # like a frozen sensor (seen when a 20x plant outran the core: all 12 satellites "frozen").
+            msg_t = tick.t + 1.0 - tick.age_s.get(sat, {}).get("thermal", 0.0)
+            if h and abs(msg_t - h[-1][0]) < 1e-6:
+                continue
+            if h and msg_t - h[-1][0] > 1.5:
                 h.clear()
-            h.append((tick.t, float(th["temp_c"]), int(th["heater_on"])))
+            h.append((msg_t, float(th["temp_c"]), int(th["heater_on"])))
             if len(h) < self.window:
                 continue
             rule, data = self._check(prof, h)

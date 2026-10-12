@@ -9,7 +9,7 @@ def test_forecast_message_matches_section_6_2():
     m = schema.forecast_message(
         "B", 1760000002.0, {10: 0.08, 30: 0.41, 60: 0.77, 120: 0.93}, {30: 0.05}, "eps", 0.86
     )
-    assert set(m) == {"v", "sat", "t", "model", "p_fail", "p_std", "next_sub", "p_malicious"}
+    assert set(m) == {"v", "sat", "t", "model", "p_fail", "p_std", "q", "next_sub", "p_malicious"}
     assert list(m["p_fail"]) == ["10", "30", "60", "120"]
 
 

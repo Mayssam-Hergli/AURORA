@@ -122,16 +122,12 @@ class Threat:
 
 
 def refused_in_safe(mode_safe: bool, origin: str, cmd: str, args: dict) -> bool:
-    """interfaces.md 3.2: what a satellite in SAFE refuses (decided from the command only)."""
+    """interfaces.md 3.2: what a satellite in SAFE refuses (the engine's rule, decided from the command)."""
     if not mode_safe:
         return False
-    if origin not in ("ground", "core"):
-        return True
-    if cmd == "HEATER":
-        return bool(args.get("on"))
-    if cmd == "SET_MODE":
-        return args.get("mode") not in ("NOMINAL", "SAFE")
-    return False
+    from ml.synthetic.engine import refused_in_safe as rule  # ml is imported lazily, like the adapter
+
+    return rule(cmd, args, origin)
 
 
 # ----------------------------------------------------------------------------- engine hooks

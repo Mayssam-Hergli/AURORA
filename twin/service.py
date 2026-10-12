@@ -16,6 +16,9 @@ Long runs: the engine pre-allocates per-tick arrays, so the twin runs in chunks 
 rolls over at the end of each chunk into a fresh engine carrying the full state over (physics, OBC
 counters, link flags, orbit phase, seq numbers). Memory stays flat for any run length.
 
+Ground truth: aurora/v1/gt/event "critical" once when a published satellite's true state reaches F
+(for the recorder and for scoring live runs; the core never subscribes to gt/).
+
 SAFE semantics (docs/interfaces.md 3.2): the engine refuses HEATER on from any origin and SET_MODE
 other than NOMINAL/SAFE while a satellite is in SAFE; only SET_MODE NOMINAL exits SAFE.
 
@@ -57,7 +60,7 @@ from aurora_common import schemas as S  # noqa: E402
 from aurora_common import topics as T  # noqa: E402
 from aurora_common.bus import Bus  # noqa: E402
 from ml import config as ml_config  # noqa: E402
-from ml.synthetic.engine import MODE_SAFE, SyntheticTwin  # noqa: E402
+from ml.synthetic.engine import MODE_SAFE, SyntheticTwin, refused_in_safe  # noqa: E402
 from ml.synthetic.scenarios import sample_spec  # noqa: E402
 
 log = logging.getLogger("twin.service")
@@ -161,7 +164,9 @@ class TwinService:
         self.inbox: queue.Queue = queue.Queue()
         self.own_ids: set[str] = set()  # commands we published: do not execute twice
         self.applied_ids: set[str] = set()  # commands we received: do not republish
-        self.stats = {"published": 0, "applied": 0, "rejected_args": 0, "relayed": 0}
+        self.stats = {"published": 0, "applied": 0, "rejected_args": 0, "relayed": 0, "critical": 0}
+        self.session = f"twin-{seed}-{int(start_t)}"  # episode_id of the ground-truth events
+        self.failed_prev = np.zeros(twin.S, bool)  # true F per satellite at the previous tick
         self.redteam_inbox: queue.Queue = queue.Queue()
         self.effects: dict[str, dict] = (
             {}
@@ -317,29 +322,23 @@ class TwinService:
             if S.args_problems(msg.cmd, msg.args):
                 self.stats["rejected_args"] += 1
                 cmd["_auth_ok"] = False  # a malformed command is rejected on board (cmd_rej rises)
-            elif self.refused_in_safe(msg.sat, msg.cmd, msg.args):
+            elif self.refused_in_safe(msg.sat, msg.cmd, msg.args, msg.origin):
                 self.stats["refused_in_safe"] = self.stats.get("refused_in_safe", 0) + 1
                 cmd["_auth_ok"] = False
             self.twin.apply(cmd)
             self.stats["applied"] += 1
             log.info("applied %s %s %s from %s", msg.sat, msg.cmd, msg.args, msg.origin)
 
-    def refused_in_safe(self, sat: str, cmd: str, args: dict) -> bool:
-        """interfaces.md 3.2: in SAFE, HEATER on (any origin) and SET_MODE other than NOMINAL/SAFE are
-        refused. Decided from the command and the OBC mode only, never from who sent it."""
-        if self.twin.mode[self.twin.idx[sat]] != MODE_SAFE:
-            return False
-        if cmd == "HEATER":
-            return bool(args.get("on"))
-        if cmd == "SET_MODE":
-            return args.get("mode") not in ("NOMINAL", "SAFE")
-        return False
+    def refused_in_safe(self, sat: str, cmd: str, args: dict, origin: str = "ground") -> bool:
+        """interfaces.md 3.2, the engine's rule (ml.synthetic.engine.refused_in_safe) for a satellite in
+        SAFE. Decided from the command and the OBC mode only, never from hidden labels."""
+        return self.twin.mode[self.twin.idx[sat]] == MODE_SAFE and refused_in_safe(cmd, args, origin)
 
     def _apply_safe_rule_to_schedule(self):
         """The engine's own commands due this tick (background ground traffic) obey the same rule."""
         t = self.twin.t
         for k, m in self.twin.queue:
-            if k == t and self.refused_in_safe(m["sat"], m["cmd"], m.get("args") or {}):
+            if k == t and self.refused_in_safe(m["sat"], m["cmd"], m.get("args") or {}, m["origin"]):
                 m["_auth_ok"] = False
 
     def step(self):
@@ -367,6 +366,22 @@ class TwinService:
                 self.own_ids.add(model.id)
             self.bus.publish(topic, model)
             self.stats["published"] += 1
+        self._critical_events(tick)
+
+    def _critical_events(self, k: int):
+        """gt/event "critical" when a satellite's true state first reaches F (ground truth for the
+        recorder and the scoring of live runs; the core never subscribes to gt/)."""
+        tw = self.twin
+        failed = tw.failed[k]
+        for s in np.flatnonzero(failed & ~self.failed_prev):
+            sat = tw.sats[s]
+            if sat in self.sats:  # a hardware slot's truth is the board's, not this twin's
+                t = tw.t0_unix + k * tw.dt + self.t_shift
+                data = {"rule": str(tw.fail_rule[k][s]), "source": "twin physics (true state)"}
+                ev = S.GtEvent(t=t, episode_id=self.session, event="critical", sat=sat, data=data)
+                self.bus.publish(T.GT_EVENT, ev)
+                self.stats["critical"] += 1
+        self.failed_prev = failed.copy()
 
 
 def main(argv=None) -> int:

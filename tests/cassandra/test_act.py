@@ -20,6 +20,22 @@ def test_uncertainty_gate():
     assert s.gate(0.50) is True
 
 
+def test_unflag_hysteresis_sits_below_the_flag_threshold_for_both_forecasters():
+    """The ensemble flags at tau (~0.015); calm_p (0.10) above it made P = 0.03 count as both a flag and
+    calm, so satellites flapped flagged/nominal before an action (seen live on the dashboard, 12 Oct)."""
+    from cassandra.act import Responder
+    from cassandra.forecast import ForecastResult
+
+    cfg = config.load()
+    r = Responder(config.profiles(cfg), cfg, sandbox=None, act_tau=0.0153)
+    for model, flag in (("tgn-v1", 0.0153), ("trajectory-v0", cfg["act"]["warn_p"])):
+        f = ForecastResult(sat="E", t=T0, model=model, p_fail={10: 0.0, 30: 0.0, 60: 0.03, 120: 0.0})
+        assert r.warn_threshold(f) == pytest.approx(flag)
+        assert r.unflag_threshold(f) < r.warn_threshold(f)
+    traj = ForecastResult(sat="E", t=T0, model="trajectory-v0", p_fail={60: 0.0})
+    assert r.unflag_threshold(traj) == cfg["act"]["calm_p"]  # trajectory behaviour unchanged
+
+
 def test_isolation_budget_is_25_percent_per_orbit_window():
     cfg = config.load()
     s = Safety(cfg, 12)

@@ -58,6 +58,18 @@ def test_exactly_constant_temperature_with_heater_off_is_frozen():
     assert hit.rule == "frozen" and hit.sparta == ("DE-0002",)
 
 
+def test_one_message_seen_on_many_ticks_is_not_a_frozen_sensor():
+    """Catch-up after a stall (or a held value): ticks k..k+11 all carry the same message, its age
+    growing. That is one reading, not twelve identical ones: no masking alarm."""
+    mon = board_monitor()
+    events = []
+    for k in range(12):
+        w = world(T0 + k, {"B": thermal(26.0, 0)})
+        w.age_s = {"B": {"thermal": float(k + 1)}}  # message time stays T0 for every tick
+        events += mon.step(w)
+    assert events == [] and mon.untrusted["B"] == set()
+
+
 def test_trust_returns_after_consistent_ticks():
     mon = board_monitor()
     temps = [30.0] * 12 + [30.0 - 0.8 * k + 0.05 * (k % 2) for k in range(1, 25)]  # thaws and cools

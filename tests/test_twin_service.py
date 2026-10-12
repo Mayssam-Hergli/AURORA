@@ -31,6 +31,26 @@ def test_initial_states_are_nominal_and_retained_topics():
     assert all(T.retain_of(t) for t, _ in bus.sent)
 
 
+def test_critical_ground_truth_is_published_once_and_only_on_gt():
+    """A latched heater takes E past T_max: one gt/event "critical" for E, at the crossing, never for
+    a satellite this twin does not publish (a hardware slot), and nothing on a core topic."""
+    bus = FakeBus()
+    tw = TwinService(bus, build_twin(2, 400), [s for s in T.SATS if s != "B"], start_t=T0, seed=2)
+    for sat in ("E", "B"):
+        tw.on_tc(
+            T.tc(sat),
+            S.Telecommand(id=f"h{sat}", t=T0, sat=sat, origin="ground", cmd="HEATER", args={"on": True}),
+        )
+    for _ in range(400):
+        tw.step()
+    crit = [m for t, m in bus.sent if t == T.GT_EVENT]
+    assert [(m.event, m.sat) for m in crit] == [("critical", "E")]
+    k = int(round(crit[0].t - T0))
+    temps = {int(round(m.t - T0)): m.fields["temp_c"] for t, m in bus.sent if t == T.tm("E", "thermal")}
+    assert temps[k] > 45.0 and temps[k - 1] <= 45.5  # published when the true state reaches F
+    assert crit[0].data["rule"] and crit[0].data["source"] == "twin physics (true state)"
+
+
 def test_rollover_keeps_physics_seq_and_time_continuous():
     bus = FakeBus()
     tw = TwinService(bus, build_twin(2, 150), list(T.SATS), start_t=T0, seed=2)
@@ -85,4 +105,30 @@ def test_recorded_episode_opens_with_ml_schema_and_features(tmp_path):
     assert e.onset_t == 10.0 and e.malicious is True
     arr = features.episode_arrays(path)
     assert arr["raw"].shape == (180, 12, 27) and arr["onset"][4] == 10
-    assert ep["labels"].params["critical_source"] == "reported telemetry"
+    truth = sorted({m.sat for t, m in bus.sent if t == T.GT_EVENT})
+    assert ep["labels"].params["critical_from_truth"] == truth
+
+
+def test_recorder_takes_the_true_crossing_under_masking(tmp_path):
+    """B1: temp_c frozen while the heater runs. The reported value never crosses 45 C; the label must
+    still say when E truly failed (gt/event critical from the twin), not "never"."""
+    rec = Recorder({s: {"t_max_c": 45.0, "soc_min_pct": 30.0, "theta_max_deg": 10.0} for s in T.SATS})
+    bus = FakeBus(sink=rec.on_msg)
+    tw = TwinService(bus, build_twin(2, 400), list(T.SATS), start_t=T0, seed=2)
+    for _ in range(5):
+        tw.step()
+    tw.on_redteam(
+        T.redteam("E"),
+        S.RedTeam(t=T0 + 5, sat="E", effect="freeze_tm", args={"sub": "thermal", "field": "temp_c"}),
+    )
+    tw.on_tc(
+        T.tc("E"), S.Telecommand(id="h3", t=T0 + 5, sat="E", origin="ground", cmd="HEATER", args={"on": True})
+    )
+    for _ in range(395):
+        tw.step()
+    reported = [m.fields["temp_c"] for t, m in bus.sent if t == T.tm("E", "thermal")]
+    assert max(reported) < 45.0  # masked: the telemetry alone would label E as never failing
+    crit = next(m for t, m in bus.sent if t == T.GT_EVENT and m.sat == "E")
+    ep = schema.read_episode(rec.write(tmp_path / "b1"))
+    e = ep["ml_labels"].satellites["E"]
+    assert e.critical_t == crit.t - T0 and ep["labels"].params["critical_from_truth"] == ["E"]

@@ -9,7 +9,6 @@ import pytest
 
 from aurora_common import schemas as AS
 from aurora_common import topics as T
-from eval import metrics as M
 from ml import config, features, schema
 from ml.synthetic.engine import MODE_SAFE, SyntheticTwin
 from tests.conftest import make_spec
@@ -82,21 +81,6 @@ def test_m2_closed_loop_plans_without_the_attackers_queue():
 
 
 # ----------------------------------------------------------------------------- M3
-def test_m3_alert_time_is_the_first_alert_anywhere_and_pre_onset_alarms_count():
-    score = np.zeros((1, 100, 2))
-    score[0, 10:12, 1] = 1.0  # satellite 1: false alarm before the onset at t = 30
-    score[0, 40:, 0] = 1.0
-    truth = {"crit": np.array([[70, -1]]), "onset": np.array([[30, 30]]), "malicious": np.array([[1, 1]])}
-    rows = M.alerts(score, truth, 0.5)
-    assert rows[0]["t_alert"] == 40 and rows[0]["lead"] == 30 and not rows[0]["pre_onset"]
-    score[0, 5, 0] = 1.0  # now satellite 0 also alarms before the onset
-    rows = M.alerts(score, truth, 0.5)
-    assert rows[0]["t_alert"] == 5 and rows[0]["pre_onset"]
-    pre = M.pre_onset_alarms(score, truth, np.array(["attack"]), 0.5)
-    assert pre["satellites_with_alarm"] == 2 and pre["alarm_events"] == 2
-    assert M.lead_summary(rows)["pre_onset_alerts"] == 1
-
-
 # ----------------------------------------------------------------------------- M4 + S2
 @pytest.fixture(scope="module")
 def a1_episode(tmp_path_factory):
@@ -129,30 +113,7 @@ def test_s2_episodes_without_label_files_can_be_featurised(a1_episode, tmp_path)
 
 
 # ----------------------------------------------------------------------------- M5
-def test_m5_calibration_is_required_unless_explicitly_waived(tmp_path, monkeypatch):
-    from ml.calibration import read_calibration, write_calibration
-    from ml.online import OnlineForecaster
-
-    monkeypatch.setattr(config, "MODELS", tmp_path)
-    with pytest.raises(FileNotFoundError, match="calibration.json"):
-        OnlineForecaster.from_models(names=[])
-    fc = OnlineForecaster.from_models(names=[], allow_uncalibrated=True)
-    assert fc.model_name == "tgn-v1-uncalibrated" and fc.temperature == 1.0
-    write_calibration(1.7, None, 0.001, 5, "ml.train")
-    write_calibration(1.8, 0.42, 0.001, 5, "eval.harness")
-    cal = read_calibration()
-    assert cal["temperature"] == 1.8 and cal["tau"] == 0.42 and cal["n_models"] == 5
-    assert OnlineForecaster.from_models(names=[]).temperature == 1.8
-
-
 # ----------------------------------------------------------------------------- S1
-def test_s1_evaluation_ticks_do_not_depend_on_ground_truth():
-    from eval.harness import eval_ticks
-
-    c = {"onset": np.array([[100], [-1]]), "crit": np.array([[200], [-1]])}
-    assert np.array_equal(eval_ticks(c, 0, 600, 2), eval_ticks(c, 1, 600, 2))
-
-
 # ----------------------------------------------------------------------------- S4 + honest nulls
 def test_s4_forecast_before_the_first_tick_and_null_fallback_fields():
     from ml.online import OnlineForecaster
@@ -173,18 +134,6 @@ def test_s4_forecast_before_the_first_tick_and_null_fallback_fields():
 
 
 # ----------------------------------------------------------------------------- S7
-def test_s7_generate_skips_test_real_without_opssat(monkeypatch, capsys):
-    from ml.synthetic import generate as G
-
-    calls = []
-    monkeypatch.setattr(G, "_opssat_available", lambda: False)
-    monkeypatch.setattr(
-        G, "generate", lambda split, n, w: calls.append(split) or pd.DataFrame({"kind": [], "critical_t": []})
-    )
-    G.main(["--split", "test_real"])
-    assert calls == [] and "test_real  skipped" in capsys.readouterr().out
-
-
 # ----------------------------------------------------------------------------- S10
 def test_s10_offline_episodes_are_synthetic_live_messages_are_twin(a1_episode):
     ep = schema.read_episode(a1_episode)

@@ -1,23 +1,37 @@
 # dashboard/
 
-**Purpose:** the operator dashboard on the projector: 12 satellite tiles (state colour, **EMULATED** / **HW** badge, temperature, P(F < t + 60 s)), the focused satellite's P(F) curve with the ±1 std ensemble band and the core's flag/plan thresholds, its temperature and SOC with limits, the last `core/action` with its alternatives and J, the `core/event` log, and the link status (feasible, enabled, cut).
+**Purpose:** The operator dashboard for the projector (docs/MASTER_PLAN.md Phase 7). A single page that subscribes to the bus over MQTT WebSockets (port 9001) and shows the constellation, the focused satellite's failure probability, the core's decisions and event log, the link matrix and the telecommand log.
 
-**Status:** done as the **single-page fallback** (MASTER_PLAN cut list item 6): plain HTML/JS, no build step, no database, works offline (MQTT.js 5.16.0 vendored in `vendor/`, MIT). Open MCT was not attempted overnight (11–12 Oct): with the 9am deadline, the time went to the board, the ML fixes and the scenario runs. **Owner:** Mayssam Hergli.
+**Status:** in progress. This is the plan's cut-list fallback (Section 5, item 6: "a single-page uPlot dashboard over WebSocket with the same views") instead of NASA Open MCT: Open MCT 4.3.1 is 34 MB unpacked and could not be installed on the development machine (disk full). The data path is tested (unit tests, and a live run against the twin over WebSockets); the views of forecasts, decisions and events still need the running core (Phase 4) and a browser check on the demo laptop.
+
+**Owner:** Youssef Mhamdi.
+
+## Run
 
 ```bash
-make up            # broker with the WebSocket listener on 9001
-make demo-sw       # twin + core
-make dashboard     # http://localhost:8080 (WSL forwards it to Windows); F11 for full screen
+make up                                    # Mosquitto with the WebSocket listener on 9001 (ground/)
+make twin                                  # 12 twin satellites (or make demo-sw: twin + core)
+make dashboard                             # http://localhost:8080  (F11 for full screen)
 ```
-Click a tile to focus that satellite. The page reconnects by itself (every 2 s) after a broker restart and re-subscribes.
 
-| File | What |
+Without `make`: `python -m http.server 8080 --bind 127.0.0.1 --directory dashboard`. The page needs no build step and no internet: the two libraries are vendored in `vendor/` (mqtt.js 5.16.0, uPlot 1.6.32, MIT; versions and SHA-256 in `vendor/README.md`).
+
+Settings are in `config.js`, and each can be overridden in the URL: `?broker=ws://192.168.1.10:9001&focus=E&act=0.5`. The Windows Mosquitto service has no WebSocket listener by default; use the broker in `ground/` (Docker) or start Mosquitto with `ground/mosquitto/mosquitto.conf`.
+
+## Views
+
+| Key | View | Shows |
+|---|---|---|
+| `1` | Overview (the demo screen) | 12 tiles: state colour (green nominal, red flagged, orange quarantined, amber safe hold), **EMULATED** / **HW** badge, temperature (`*` = emulated by firmware), SOC, P(F<60 s) and model. Focused satellite (click a tile; auto-focus on a new flag or quarantine): P(F<30 s) and P(F<60 s) with ±σ band and the flag / plan lines (planning starts at the plan line; J chooses the action), temperature, SOC. Last `core/action` with J, gate, Q and alternatives; `core/event` log |
+| `2` | Links | 12 × 12 matrix: up, cut (feasible but disabled: quarantine or reroute), no line of sight |
+| `3` | Satellites | temperature, SOC and attitude error of all 12; telecommand log with origin highlighted (`isl:*`, `unknown`) |
+
+## Files
+
+| File | What it does |
 |---|---|
-| `index.html`, `style.css` | layout for a 1080p projector, large fonts, dark theme |
-| `config.js` | broker URL (`ws://<host>:9001`), history length (15 min), threshold lines |
-| `store.js` | all message handling (pure, tested with Node: `tests/dashboard/store_test.js`) |
-| `app.js` | MQTT over WebSocket, drawing (canvas), panels |
+| `store.js` | data layer, no DOM: topic parsing, per-satellite state, 15-min history, link matrix, events (`node --test "dashboard/tests/*.test.js"`) |
+| `app.js` | MQTT over WebSocket (auto-reconnect, re-subscribe), rendering, uPlot charts |
+| `index.html`, `style.css`, `config.js` | layout for 1080p at 5 m, settings |
 
-**Subscriptions:** `sat/+/tm/+`, `sat/+/state`, `link/+`, `core/forecast/+`, `core/action`, `core/event`. Never `gt/` or `redteam/`.
-
-**Verified overnight:** store logic (Node test); the live data path ws://localhost:9001 → `store.js` with twin + core + A1 running (about 67 000 messages in 45 s, E contained and healed). **Not verified:** the page in a real browser (no browser on this machine overnight): open it once before rehearsal.
+**Interfaces it uses:** reads `sat/+/tm/+`, `sat/+/tc`, `sat/+/state`, `link/+`, `core/forecast/+`, `core/action`, `core/event` (docs/interfaces.md). It never subscribes to `gt/` or `redteam/` and never publishes. Text from the bus is escaped before display.

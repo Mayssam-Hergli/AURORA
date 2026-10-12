@@ -13,9 +13,10 @@ never does). On Ctrl-C, after --duration, or when a gt/episode "end" message arr
     ml_labels.json      t0 = first telemetry time; per-satellite onset_t from gt/event "onset" and
                         critical_t = first tick the *recorded* telemetry crosses its limit (seconds
                         since t0, interfaces.md 4)
-Critical times come from reported telemetry and the limits in cassandra/config.yaml (twin 45 C,
-board 60 C, SOC 30 %, attitude 10 deg); under telemetry masking the true crossing may differ, which
-the labels say ("critical_source": "reported telemetry").
+Critical times: the twin's gt/event "critical" (the true crossing, right also under telemetry masking)
+wherever the twin published one; otherwise the first crossing in the reported telemetry with the
+limits in cassandra/config.yaml (twin 45 C, board 60 C, SOC 30 %, attitude 10 deg), e.g. for the board,
+which has no ground truth. labels.params says which satellites came from truth ("critical_from_truth").
 """
 
 from __future__ import annotations
@@ -112,6 +113,11 @@ class Recorder:
         pd.DataFrame(links, columns=link_cols).to_parquet(out / "links.parquet", index=False)
 
         crit = self._critical(tel, t0)
+        true_crit = {}  # gt/event "critical" from the twin: the true crossing, also under masking (B1)
+        for e in sorted((e for e in events if e["event"] == "critical"), key=lambda e: e["t"]):
+            rule = (e.get("data") or {}).get("rule") or "true state reached F"
+            true_crit.setdefault(e["sat"], (e["t"] - t0, rule))
+        crit.update(true_crit)
         onset = {e["sat"]: e["t"] - t0 for e in events if e["event"] == "onset"}
         kind = (gt or {}).get("kind", "clean")
         sat_truth = {}
@@ -150,7 +156,11 @@ class Recorder:
                 params={},
                 satellites=sats,
             )
-        labels.params = {**labels.params, "critical_source": "reported telemetry"}
+        labels.params = {
+            **labels.params,
+            "critical_source": "gt/event critical (twin truth) where published, else reported telemetry",
+            "critical_from_truth": sorted(true_crit),
+        }
         ml = S.MLLabels(
             episode_id=labels.episode_id,
             t0=t0,

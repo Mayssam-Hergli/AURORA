@@ -12,7 +12,8 @@ P below is P(F < t + horizon_s), horizon_s = 60 by default (config explains why 
   the satellite stays in service, flagged, until the verifier clears it.
 - Verifier: heal when temp_c is trusted and below heal_below_c and P < calm_p for calm_ticks
   consecutive ticks: SET_MODE NOMINAL, re-enable the links the core cut, state nominal.
-- A flagged satellite on which nothing was done returns to nominal after unflag_ticks calm ticks.
+- A flagged satellite on which nothing was done returns to nominal after unflag_ticks ticks below
+  min(calm_p, half its flag threshold) (hysteresis also for the ensemble's small tau).
 - Repeated commands: a hazardous command (HEATER on, SET_MODE SCIENCE / WHEEL_TEST) seen at least
   threat_min_count times from the same origin is a Threat that the sandbox models as continuing.
   Healing waits until it has gone quiet (no copy for threat_quiet_factor x its period + 5 s).
@@ -213,6 +214,12 @@ class Responder:
             return self.tau
         return self.warn_traj
 
+    def unflag_threshold(self, f: ForecastResult | None) -> float:
+        """Hysteresis: a flagged satellite returns to nominal only below half its own flag threshold
+        (at most calm_p). With the ensemble's tau (~0.015) below calm_p, P = 0.03 was both a flag and
+        calm, and satellites flapped between flagged and nominal."""
+        return min(self.calm, 0.5 * self.warn_threshold(f))
+
     # ------------------------------------------------------------------ helpers
     def _set(self, out: Outbox, t: float, sat: str, new: str, why: str) -> None:
         old = self.state[sat]
@@ -355,7 +362,7 @@ class Responder:
                     elif sat in hits:
                         why = "telemetry inconsistent (monitor)"
                     else:
-                        why = f"P(F<{h}s)={p:.2f} >= {warn}"
+                        why = f"P(F<{h}s)={p:.3g} >= {warn:.3g}"
                     self._set(out, now, sat, "flagged", why)
                     self.calm_run[sat] = 0
                     st = "flagged"
@@ -369,14 +376,15 @@ class Responder:
                         out, now, sat, tick, f, forecasts, bad_trust, threats, source=bool(src)
                     )
                 elif self.contained[sat] is None and not src:
-                    self.calm_run[sat] = self.calm_run[sat] + 1 if (p < self.calm and not bad_trust) else 0
+                    calm = self.unflag_threshold(f)
+                    self.calm_run[sat] = self.calm_run[sat] + 1 if (p < calm and not bad_trust) else 0
                     if self.calm_run[sat] >= self.unflag:
                         self._set(
                             out,
                             now,
                             sat,
                             "nominal",
-                            f"P(F<{h}s)={p:.2f} < {self.calm} for {self.calm_run[sat]} s",
+                            f"P(F<{h}s)={p:.3g} < {calm:.3g} for {self.calm_run[sat]} s",
                         )
                         self.calm_run[sat] = 0
             if sat in self.ground_hold:

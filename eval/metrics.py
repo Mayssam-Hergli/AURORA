@@ -3,10 +3,10 @@
 Conventions (per satellite s of episode e; ticks are 1 s):
     benign timesteps  every tick of satellites in clean and fault episodes that never reach F
     tau               (1 - target_fpr) quantile of a method's scores on benign timesteps
-    T_alert           first tick of the episode with score >= tau (CONTEXT 5.8; review fix M3: the
-                      search no longer starts at the true onset, so a model gets no free pass before it)
-    pre-onset alarm   an alert before the first anomaly onset of an attack episode: a false alarm,
-                      counted and reported (pre_onset_alarms)
+    T_alert           first tick with score >= tau, counted from tick 0 (M3). If it falls before the
+                      episode's first anomaly onset it is a false alarm (`pre_onset_alarm`, and
+                      pre_onset_false_alarms below); detection and lead then use the first alert at
+                      or after onset, so an early false alarm never earns lead time
     T_lead            T_critical - T_alert for satellites that reach F (responses disabled);
                       alerts at or after T_critical are misses
     detection delay   T_alert - onset of that satellite (negative = predictive warning, e.g. a
@@ -55,8 +55,10 @@ def alerts(score, truth, tau) -> list[dict]:
         start = int(on[on >= 0].min())
         for s in range(S):
             tc = int(truth["crit"][e, s])
-            hit = np.flatnonzero(score[e, :, s] >= tau)
-            t_alert = int(hit[0]) if len(hit) else -1
+            above = score[e, :, s] >= tau
+            t_alert_any = int(np.argmax(above)) if above.any() else -1
+            hit = np.flatnonzero(above[start:])
+            t_alert = start + int(hit[0]) if len(hit) else -1
             if tc >= 0:
                 detected = 0 <= t_alert < tc
                 rows.append(
@@ -66,34 +68,32 @@ def alerts(score, truth, tau) -> list[dict]:
                         failing=True,
                         t_crit=tc,
                         t_alert=t_alert,
+                        t_alert_any=t_alert_any,
+                        pre_onset_alarm=bool(0 <= t_alert_any < start),
                         detected=detected,
                         lead=tc - t_alert if detected else 0.0,
                         delay=(t_alert - int(on[s])) if detected and on[s] >= 0 else np.nan,
                         malicious=int(truth["malicious"][e, s]),
-                        pre_onset=0 <= t_alert < start,
                     )
                 )
     return rows
 
 
-def pre_onset_alarms(score, truth, kinds, tau) -> dict:
-    """Alerts before the first onset of attack episodes, on any satellite: false alarms (M3)."""
-    sat_eps = alarms = 0
-    hours = 0.0
-    n, T, S = score.shape
-    for e in range(n):
-        if kinds[e] != "attack":
-            continue
+def pre_onset_false_alarms(score, truth, kinds, tau, dt_s: float = 1.0) -> dict:
+    """M3: alarms in attack episodes before the first anomaly onset are false alarms (every satellite)."""
+    events, sat_s, alarmed = 0, 0.0, 0
+    for e in np.flatnonzero(np.asarray(kinds) == "attack"):
         on = truth["onset"][e]
-        if (on < 0).all():
+        if (on < 0).all() or on[on >= 0].min() <= 0:
             continue
-        start = int(on[on >= 0].min())
-        a = score[e, :start, :] >= tau  # [start, S]
-        sat_eps += int(a.any(0).sum())
-        alarms += int(a[0].sum() + (a[1:] & ~a[:-1]).sum()) if start > 0 else 0
-        hours += start * S / 3600
+        a = score[e, : int(on[on >= 0].min())] >= tau  # [ticks before onset, S]
+        events += int(a[0].sum() + (a[1:] & ~a[:-1]).sum())
+        sat_s += a.size * dt_s
+        alarmed += int(a.any(0).sum())
     return dict(
-        satellites_with_alarm=sat_eps, alarm_events=alarms, per_sat_hour=alarms / hours if hours else np.nan
+        pre_onset_alarm_events=events,
+        pre_onset_sats_alarmed=alarmed,
+        pre_onset_false_alarms_per_sat_hour=events / (sat_s / 3600) if sat_s else np.nan,
     )
 
 
@@ -118,7 +118,7 @@ def lead_summary(rows: list[dict]) -> dict:
         iqr_lead_s=[float(q[0]), float(q[1])],
         mean_lead_s=float(lead.mean()),
         median_delay_s=float(np.nanmedian(delay)) if np.isfinite(delay).any() else np.nan,
-        pre_onset_alerts=int(sum(bool(r.get("pre_onset")) for r in rows)),
+        pre_onset_alerts=int(sum(bool(r.get("pre_onset_alarm")) for r in rows)),  # failing sats alarmed early
     )
 
 

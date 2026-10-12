@@ -56,6 +56,22 @@ SUB_OF_CHANNEL = {
     "level": "sun",
 }
 MODE_NOMINAL, MODE_SAFE, MODE_QUARANTINED = 0, 1, 2
+OFFLINE_SRC = "synthetic"  # src of generated episode files (D9); live messages_at keeps "twin"
+
+
+def refused_in_safe(cmd: str, args: dict, origin: str = "ground") -> bool:
+    """docs/interfaces.md 3.2 (SAFE semantics): in SAFE a satellite refuses commands from origins other
+    than ground/core, HEATER on from any origin (load shedding) and SET_MODE other than NOMINAL/SAFE;
+    only SET_MODE NOMINAL exits SAFE. Decided from the command alone: the satellite cannot know which
+    commands are malicious (review finding M1). The one copy of the rule for the engine, the twin
+    service and the core's sandbox (the board bridge keeps its own: it runs without this repo's deps)."""
+    if origin.split(":", 1)[0] not in ("ground", "core"):
+        return True
+    if cmd == "HEATER":
+        return bool(args.get("on"))
+    if cmd == "SET_MODE":
+        return args.get("mode") not in ("NOMINAL", "SAFE")
+    return False
 
 
 @dataclass
@@ -349,9 +365,9 @@ class SyntheticTwin:
 
     # ================================================================== sandbox API
     def snapshot(self, include_queue: bool = True):
-        """Full state copy. include_queue=False (review finding M2): the copy keeps the physical and
-        OBC state but none of the future: no queued commands and no planned Scenario C propagation.
-        A planner must use this, so that it never sees the attacker's future commands."""
+        """Copy of the full state. include_queue=False is what a planner may see: no queued future
+        commands and no pending ISL propagation, only the effects already in the physical state
+        (a latched heater stays latched). M2: the sandbox must not know the attacker's plan."""
         snap = copy.deepcopy(self.__dict__)
         if not include_queue:
             snap["queue"] = []
@@ -361,67 +377,95 @@ class SyntheticTwin:
     def restore(self, snap):
         self.__dict__.update(copy.deepcopy(snap))
 
-    def seed_from_observation(self, obs: dict, hold_geometry: bool = True, t_index: int = 0) -> None:
-        """Set the state from what a defender observed (the core's sandbox shadow, M2).
+    def seed_from_observation(
+        self, obs: dict, hold_geometry: bool = True, t_index: int | None = None
+    ) -> SyntheticTwin:
+        """Make this twin a shadow of what a defender observed (the core's sandbox, M2). Returns self.
 
-        obs = {"t": float,
-               "sats": {sat: {"temp_c", "heater_on", "soc_pct", "mode", "eclipse", "ground_contact",
-                              "temp_rate_c_s" (optional)}},
-               "links": {"A-B": {"feasible": bool, "enabled": bool}}}
-        A heater observed ON stays latched at full power (its drive shape is unknown to the defender);
-        its power is inferred from the observed heating rate when given. Ground truth is reset: nothing
-        about the scenario is known.
+        Two input shapes:
+          flat:      {"sats": {sat: {"temp_c", "heater_on", "soc_pct", "mode", "eclipse", "ground_contact",
+                      "temp_rate_c_s" (optional)}}, "links": {"A-B": {"feasible", "enabled"}},
+                      "disabled": ["A-B", ...] (optional)}
+          WorldTick: {"tick": k, "values": {sat: {sub: fields}}, "links": {(a, b) or "a-b": {...}}}
+                     (cassandra.world.WorldTick: pass tick, wt.values, wt.links)
+        Observed: temperature, SOC, OBC mode and counters, wheels, attitude, heater state, link flags.
+        Unobserved state keeps its model value. Nothing about the scenario survives: no queued
+        commands, attack, fault, block or propagation plan, no scripted anomaly (threat model "observed
+        effects persist": a heater seen on stays commanded on, at full power unless the observed heating
+        rate says otherwise; heater_on below the thermostat band is the thermostat, not a command).
 
         Geometry: hold_geometry=True holds the observed eclipse, contact and link feasibility over the
-        rollout (persistence). hold_geometry=False keeps this twin's own orbit propagation from
-        tick t_index (the caller has matched its orbit phase to the observed links), so links that
-        open during the rollout are seen; ground contact is still held (Earth rotation is not part of
-        the match). Link enable flags: observed where the link is feasible, assumed on elsewhere,
-        except the links in obs["disabled"] (cut on purpose, e.g. by a quarantine)."""
+        rollout (persistence). hold_geometry=False keeps this twin's own orbit propagation from tick
+        t_index (the caller matched its orbit phase to the observed links), so links that open during
+        the rollout are seen; ground contact is still held. Link enable flags: observed where the link
+        is feasible, assumed on elsewhere, except links in obs["disabled"] (cut on purpose)."""
         th = self.cfg["thermal"]
-        for s, sat in enumerate(self.sats):
-            o = obs.get("sats", {}).get(sat)
-            if not o:
+        if t_index is None:
+            t_index = obs.get("tick") or 0
+        self.t = int(np.clip(t_index, 0, self.T - 1))
+        self.queue, self.commands, self.c1, self.fault, self.blocked = [], [], None, None, {}
+        self.anomalies, self.truth = False, {s: {} for s in self.sats}
+        self.heater_attack[:] = self.wheel_attack[:] = self.drain_attack[:] = -1
+        self.heater_stuck[:] = False
+        modes = {"NOMINAL": MODE_NOMINAL, "SAFE": MODE_SAFE, "QUARANTINED": MODE_QUARANTINED}
+        sats = obs.get("sats") or {}
+        if "values" in obs:  # WorldTick shape: flatten each satellite's subsystems
+            sats = {
+                sat: {k: v for f in subs.values() if f for k, v in f.items()}
+                for sat, subs in obs["values"].items()
+            }
+        for sat, o in sats.items():
+            if sat not in self.idx or not o:
                 continue
+            s = self.idx[sat]
             if o.get("temp_c") is not None:
-                self.temp[s] = o["temp_c"]
+                self.temp[s] = float(o["temp_c"])
             if o.get("soc_pct") is not None:
-                self.soc[s] = o["soc_pct"] / 100.0
-            on = bool(o.get("heater_on", 0))
+                self.soc[s] = float(np.clip(o["soc_pct"] / 100.0, 0, 1))
+            if o.get("wheel_rpm") is not None:
+                self.wheels[s] = np.asarray(o["wheel_rpm"], float)
+            if o.get("att_err_deg") is not None:
+                self.theta_drift[s] = self.theta_prev[s] = abs(float(o["att_err_deg"]))
+            on = bool(o.get("heater_on", 0)) and self.temp[s] > th["thermostat_off_c"]
             self.heater_cmd[s] = on
-            self.heater_attack[s] = -1
-            self.heater_stuck[s] = False
-            self.science[s] = False
-            self.thermostat[s] = False
-            self.mode[s] = MODE_SAFE if o.get("mode") in ("SAFE", "QUARANTINED") else MODE_NOMINAL
+            self.science[s] = self.thermostat[s] = False
+            self.mode[s] = modes.get(o.get("mode"), MODE_NOMINAL)
+            for k, arr in (("cmd_ok", self.cmd_ok), ("cmd_rej", self.cmd_rej)):
+                if o.get(k) is not None:
+                    arr[s] = int(o[k])
+            if o.get("last_origin"):
+                self.last_origin[s] = o["last_origin"]
+            if self.mode[s] != MODE_NOMINAL:
+                self.heater_cmd[s] = on = False
             rate = o.get("temp_rate_c_s")
-            if on and rate is not None and o.get("temp_c") is not None:
+            if on and rate is not None:
                 ecl = float(o.get("eclipse", 0))
                 p = (
                     th["heat_capacity_j_per_k"] * rate
                     - th["p_sun_absorbed_w"] * (1 - ecl)
                     - th["p_internal_w"]
-                    + th["conductance_w_per_k"] * (o["temp_c"] - th["t_env_c"])
+                    + th["conductance_w_per_k"] * (self.temp[s] - th["t_env_c"])
                 )
                 self.heater_power[s] = float(np.clip(p, 0.0, 200.0))
             if "eclipse" in o and hold_geometry:
-                self.geo.eclipse[:, s] = bool(o["eclipse"])
+                self.geo.eclipse[self.t :, s] = bool(o["eclipse"])
             if "ground_contact" in o:
-                self.geo.contact[:, s] = bool(o["ground_contact"])
-        for key, lk in obs.get("links", {}).items():
-            a, b = key.split("-")
+                self.geo.contact[self.t :, s] = bool(o["ground_contact"])
+        for key, lk in (obs.get("links") or {}).items():
+            a, b = key if isinstance(key, tuple) else key.split("-")
+            if a not in self.idx or b not in self.idx:
+                continue
             i, j = self.idx[a], self.idx[b]
+            feasible = bool(lk.get("feasible", self.geo.feasible[self.t, i, j]))
             if hold_geometry:
-                self.geo.feasible[:, i, j] = self.geo.feasible[:, j, i] = bool(lk["feasible"])
-            on = bool(lk["enabled"]) if lk["feasible"] else True
+                self.geo.feasible[self.t :, i, j] = self.geo.feasible[self.t :, j, i] = feasible
+            on = bool(lk.get("enabled", True)) if feasible else True
             self.isl_enabled[i, j] = self.isl_enabled[j, i] = on
         for key in obs.get("disabled", []):
             a, b = key.split("-")
             i, j = self.idx[a], self.idx[b]
             self.isl_enabled[i, j] = self.isl_enabled[j, i] = False
-        self.queue, self.commands, self.c1 = [], [], None
-        self.truth = {s: {} for s in self.sats}
-        self.t = int(t_index)
+        return self
 
     def apply(self, msg: dict):
         """Deliver a telecommand now (Section 6.2 message; origin decides trust)."""
@@ -486,22 +530,12 @@ class SyntheticTwin:
 
     @staticmethod
     def _refused_in_safe(kind: str, msg: dict) -> bool:
-        """docs/interfaces.md 3.2 (SAFE semantics): in SAFE a satellite refuses commands from origins
-        other than ground/core, HEATER on from any origin (load shedding) and SET_MODE other than
-        NOMINAL/SAFE; only SET_MODE NOMINAL exits SAFE. Decided from the command alone: the satellite
-        cannot know which commands are malicious (review finding M1)."""
-        if kind not in ("ground", "core"):
-            return True
-        args = msg.get("args") or {}
-        if msg["cmd"] == "HEATER":
-            return bool(args.get("on"))
-        if msg["cmd"] == "SET_MODE":
-            return args.get("mode") not in ("NOMINAL", "SAFE")
-        return False
+        return refused_in_safe(msg["cmd"], msg.get("args") or {}, kind)
 
     def _safe_mode(self, s):
-        """Safe mode: heater off, minimal loads (CONTEXT 5.1). Queued commands stay queued; when they
-        arrive, the SAFE rule of _refused_in_safe decides (M1: no inspection of hidden flags)."""
+        """Safe mode (docs/interfaces.md 3.2): heater off and non-essential loads off. Queued commands
+        stay queued: they are refused or accepted on delivery by the SAFE rule in _execute, which looks
+        only at the command and the mode, never at whether it is malicious (M1)."""
         self.mode[s] = MODE_SAFE
         self.heater_cmd[s] = False
         self.science[s] = False
@@ -868,8 +902,7 @@ class SyntheticTwin:
         sp, T, S = self.spec, self.T, self.S
         tick_t = self.t0_unix + np.arange(T) * self.dt
         frames = []
-        # offline episodes are synthetic data, never to be confused with the live twin (S10, D9)
-        base = pd.DataFrame({"t": np.repeat(tick_t, S), "sat": np.tile(self.sats, T), "src": "synthetic"})
+        base = pd.DataFrame({"t": np.repeat(tick_t, S), "sat": np.tile(self.sats, T), "src": OFFLINE_SRC})
         seq = (self.seq0[None, :] + np.arange(T)[:, None]).reshape(-1)
         R = self.rep.reshape(T * S, -1)
         cols = {c: R[:, i] for i, c in enumerate(NOISY)}
@@ -935,7 +968,7 @@ class SyntheticTwin:
         commands = pd.DataFrame(
             self.commands, columns=["v", "id", "t", "sat", "origin", "cmd", "args", "accepted"]
         )
-        commands["src"] = "synthetic"
+        commands["src"] = OFFLINE_SRC
         a, b = np.triu_indices(S, 1)
         links = pd.DataFrame(
             {
