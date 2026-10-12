@@ -56,6 +56,7 @@ def generate(pairs=24):
             )
             rows.append(
                 dict(
+                    **spec.family(),
                     episode_id=spec.episode_id,
                     split="test_hard",
                     type=ep.labels.type,
