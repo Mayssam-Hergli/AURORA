@@ -1,0 +1,22 @@
+{
+ "latency": [
+  {
+   "threads": 1,
+   "ensemble_size": 2,
+   "median_ms": 19.39930499975162,
+   "p95_ms": 21.6133814994464,
+   "machine": "x86_64",
+   "processor": "",
+   "note": "inference only; add the sandbox planning time for the 150 ms budget"
+  },
+  {
+   "threads": 4,
+   "ensemble_size": 2,
+   "median_ms": 15.81641050051985,
+   "p95_ms": 21.142626650816965,
+   "machine": "x86_64",
+   "processor": "",
+   "note": "inference only; add the sandbox planning time for the 150 ms budget"
+  }
+ ]
+}
