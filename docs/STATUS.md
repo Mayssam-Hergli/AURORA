@@ -1,3 +1,5 @@
+> Historical integration/planning record. The hardened `rami` behavior, current checks and fresh result provenance are documented in [HARDENING_REPORT.md](HARDENING_REPORT.md). Earlier action names, uncertainty rules and numbers below describe earlier revisions.
+
 # AURORA status. Updated 2026-10-12 midday (Claude Code for Mayssam Hergli)
 
 # Midday update (12 Oct): Youssef's branches integrated

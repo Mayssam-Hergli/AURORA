@@ -21,7 +21,7 @@ Ground truth (`labels.json`, `ml_labels.json`, `aurora/v1/gt/...`) is read only 
 | `aurora/v1/sat/{id}/tc` | `cmd`, `origin` (`ground`, `isl:X`, `unknown`) | `tc_ground`, `tc_isl`, `tc_unknown`, `tc_heater_on`, `tc_set_mode`, `tc_ping` on OBC |
 | `aurora/v1/link/...` | per-pair link up/down | E_ISL(t) mask (66 pairs for 12 satellites) and `n_isl_peers` |
 
-[`ml/online.py`](../ml/online.py) (`FrameBuilder`) turns the message stream into one frame per second: 27 channels per satellite plus 66 link states. [`ml/features.py`](../ml/features.py) (`episode_arrays`) builds the same frames offline from an episode folder. The two agree to a relative difference of 2.5e-4, which the tests check.
+[`ml/frames.py`](../ml/frames.py) (`FrameBuilder`) turns the message stream into one frame per second: 33 channels per satellite plus 66 link states. [`ml/features.py`](../ml/features.py) (`episode_arrays`) builds the same frames offline from an episode folder. They share the causal builder and agree before float16 cache quantization; tests cover initial gaps, delay, out-of-order packets and dropouts. Critical channels include explicit fresh-sample masks and ages.
 
 ### 1.2 Output (Section 6.2 forecast message)
 
@@ -117,18 +117,18 @@ python -m ml.train all --parallel 1       # everything that is missing (resumabl
   - T_alert is the first tick at or after the episode onset with score ≥ τ.
   - An alert at or after T_critical is a miss.
   - T_lead = T_critical − T_alert, reported as the median and IQR over detected satellites, with recall and a 95 % bootstrap CI over episodes.
-- **Two operating points.** Matched FPR is the comparison point. `ensemble@act` is the response engine's own action threshold (P ≥ 0.85), so the paper can say how early the system *acts*, not only how early it *warns*.
+- **Two operating points.** Matched FPR is the comparison point. `ensemble@0.85` is a fixed forecast threshold. It does not measure the runtime policy's actions, which depend on persistence, calibration, gates, escalation and recovery.
 - **Ranking and heads.**
   - AUROC and AUPRC of P(F < t + 60 s) on satellite-ticks with a defined target;
   - ECE per horizon;
   - next-subsystem top-1 and top-3;
   - malicious-vs-fault AUROC.
 - **Breakdowns.** By type (A1 … F5), by scenario (A/B/C/F) and by precursor (burst, sparse, none).
-- **Evaluation ticks.** Every 6 s everywhere, an unbiased sample for FPR, and every 2 s from onset to the last failure, where lead time is measured. Ground truth only schedules when the model is called; it never enters its inputs.
+- **Evaluation ticks.** Every 2 s from tick zero for every method, held forward between evaluated ticks. Ground truth does not schedule inference.
 
-[`eval/closed_loop.py`](../eval/closed_loop.py) runs the closed loop. It re-runs test episodes on the twin with CASSANDRA acting. At each decision the sandbox snapshots the twin, rolls each candidate action 30 s forward and scores J(a). It applies the action with the lowest J. If that action has Q > 0.35, the satellite goes to safe mode instead (a safe hold for ground review). `quarantine_reroute` is offered only while quarantines in the current orbit stay within 25 % of the constellation. A satellite is restored after 10 consecutive steps below the flag threshold (0.30). It reports failures averted, new failures, false containments per orbit, availability and planning time. The sandbox uses the simulator as its model, so these numbers are an upper bound.
+[`eval/runtime_policy.py`](../eval/runtime_policy.py) runs paired simulations through the actual Core, including observation-seeded planning, persistence, uncertainty gates, escalation and complete recovery criteria. A thermal mismatch arm alters the plant while leaving the sandbox nominal. The older [`eval/closed_loop.py`](../eval/closed_loop.py) is a simulator-snapshot reference, excluded from primary claims. Unknown or high uncertainty withholds link isolation/quarantine and allows supported local protective actions with ground review.
 
-[`eval/robustness.py`](../eval/robustness.py) runs PGD on the forgeable channels (thermal, EPS and ADCS housekeeping, but not `heater_on`, telecommands, the sun sensor or links). The ε levels are 0, 0.25, 0.5 and 1 nominal standard deviation, with the attacker trying to suppress P(F < t + 60 s). It reports recall, lead and the mean Q under attack, and the same budget applied to static thresholds.
+[`eval/robustness.py`](../eval/robustness.py) runs PGD on the forgeable channels (thermal, EPS and ADCS housekeeping, but not `heater_on`, telecommands, the sun sensor or links). The ε levels are 0, 0.25, 0.5 and 1 nominal standard deviation, with the attacker trying to suppress P(F < t + 60 s). It uses a type-stratified sample and reports episode-bootstrap confidence intervals for recall and lead, plus mean Q under attack, and the same budget applied to static thresholds.
 
 ## 6. Deployment
 

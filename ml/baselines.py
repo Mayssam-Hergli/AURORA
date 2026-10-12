@@ -28,7 +28,11 @@ def threshold_score(raw: np.ndarray, crit: dict, t_ref=20.0, soc_ref=90.0) -> np
     t = (raw[..., CH["temp_c"]] - t_ref) / (crit["t_max_c"] - t_ref)
     s = (soc_ref - raw[..., CH["soc_pct"]]) / (soc_ref - crit["soc_min_pct"])
     a = np.abs(raw[..., CH["att_err_deg"]]) / crit["theta_max_deg"]
-    return np.maximum.reduce([t, s, a]).astype(np.float32)
+    terms = [
+        np.where(raw[..., CH[name + "_age_s"]] < 600, score, 0.0)
+        for name, score in zip(("temp_c", "soc_pct", "att_err_deg"), (t, s, a))
+    ]
+    return np.maximum.reduce(terms).astype(np.float32)
 
 
 def _slope(x: np.ndarray, w: int) -> np.ndarray:
@@ -54,12 +58,16 @@ def trajectory_score(
         if name not in channels:
             continue
         x = raw[..., CH[name]].astype(np.float64)
-        rate = _slope(x, w) * sign
+        if name == "att_err_deg":
+            x = np.abs(x)
+        available = raw[..., CH[name + "_age_s"]] < 600
+        ready = np.cumsum(available, axis=1) >= w
+        rate = np.where(ready, _slope(x, w) * sign, 0.0)
         gap = (limit - x) * sign
         with np.errstate(divide="ignore", invalid="ignore"):
             tc = np.where(rate > 1e-6, gap / rate, np.inf)
         tc = np.where(gap <= 0, 0.0, tc)
-        out.append(np.clip(1 - tc / horizon, 0, 1))
+        out.append(np.where(available, np.clip(1 - tc / horizon, 0, 1), 0.0))
     return np.maximum.reduce(out).astype(np.float32)
 
 

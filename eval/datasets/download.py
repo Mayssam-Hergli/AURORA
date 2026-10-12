@@ -146,6 +146,10 @@ def esa_adb(mission: int, allow_large: bool) -> Path:
 
 def models(url: str = MODELS_URL, sha256: str = MODELS_SHA256) -> Path:
     """Trained ensemble, understanding and calibration into data/models/ (what the core loads)."""
+    if url == MODELS_URL:
+        raise RuntimeError(
+            "retired 27-channel model release: train causal-v2 models or unpack the hardened bundle"
+        )
     archive = _fetch(url, DATA / url.rsplit("/", 1)[-1])
     if _hash(archive, "sha256") != sha256:
         archive.unlink()

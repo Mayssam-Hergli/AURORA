@@ -1,3 +1,5 @@
+> Historical integration/planning record. The hardened `rami` behavior, current checks and fresh result provenance are documented in [HARDENING_REPORT.md](HARDENING_REPORT.md). Earlier action names, uncertainty rules and numbers below describe earlier revisions.
+
 # AURORA / CASSANDRA: Master Plan to Done
 
 **For:** Claude Code, working in the `AURORA` repo with Mayssam Hergli.

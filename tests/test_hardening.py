@@ -145,3 +145,21 @@ def test_new_ablations_and_export_shapes(understanding):
     altered = raw.clone()
     altered[..., temporal.command_indices] = 100
     torch.testing.assert_close(temporal(raw, links)["p_fail"], temporal(altered, links)["p_fail"])
+
+
+def test_baselines_do_not_treat_unseen_zero_as_low_soc():
+    from ml import baselines as BL
+    from ml import graph as G
+
+    raw = np.zeros((1, 20, 1, len(G.FLAT)), np.float32)
+    for channel in ("temp_c", "soc_pct", "att_err_deg"):
+        raw[..., G.FLAT.index(channel + "_age_s")] = 600
+    limits = {"t_max_c": 45, "soc_min_pct": 30, "theta_max_deg": 10}
+    assert BL.threshold_score(raw, limits).max() == 0
+    assert BL.trajectory_score(raw, limits).max() == 0
+    raw[:, 5:, :, G.FLAT.index("soc_pct")] = 80
+    raw[:, 5:, :, G.FLAT.index("soc_pct_age_s")] = 0
+    assert BL.trajectory_score(raw, limits).max() == 0
+    raw[:, 10:, :, G.FLAT.index("att_err_deg")] = -11
+    raw[:, 10:, :, G.FLAT.index("att_err_deg_age_s")] = 0
+    assert BL.trajectory_score(raw, limits)[0, 10, 0] == 1

@@ -185,6 +185,8 @@ def run(workers: int):
                 )
             )
         time.sleep(3)
+        if any(p.poll() not in (None, 0) for p in running):
+            raise RuntimeError("prediction job failed; inspect results/logs/eval_*.err")
         running = [p for p in running if p.poll() is None]
     compute_metrics()
 

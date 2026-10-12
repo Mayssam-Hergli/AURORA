@@ -22,7 +22,7 @@ Target: about 3 minutes (CONTEXT Section 11), adjusted to what exists (MASTER_PL
 |---|---|---|
 | "Twelve satellites: three physical slots, B is this board; the other eleven are simulated: see the EMULATED badges." | point at the tiles | all green; B shows "HW · temp emulated" |
 | "An attacker who abused ground trust sends one heater command to B." | T4: `make attack A1 TARGET=B` | blue LED on; B's temperature climbs 1.5 °C/s |
-| "CASSANDRA does not wait for the limit. It forecasts the time to failure." | | within ~2 s: B red on the board and the dashboard; decision in the event log: *P(F<60s)=0.58 … cause: heater latched ON (origin=ground) … T_max 60 in ~25 s · IA-0009 · action: isolate_subsystem* |
+| "CASSANDRA does not wait for the limit. It forecasts the time to failure." | | within ~2 s: B red on the board and the dashboard; decision in the event log: *P(F<60s)=0.58 … cause: heater latched ON (origin=ground) … T_max 60 in ~25 s · IA-0009 · action: cut_heater* |
 | "It simulated the alternatives (J values on the right) and chose the least disruptive one: it cuts the heater, B stays in service." | point at Last action | alternatives safe_mode / quarantine / none with their J |
 | "B cools and is healed automatically." | | `healed` event, B green again (seconds) |
 

@@ -93,3 +93,8 @@ results/*
 !results/DATASET_SHA256SUMS.json
 !results/frozen/
 !results/frozen/*.json
+
+# Deadline-bounded preliminary submission evidence.
+!results/submission/
+!results/submission/*.json
+!results/submission/*.txt

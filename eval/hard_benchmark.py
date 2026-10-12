@@ -44,6 +44,10 @@ def generate(pairs=24):
                 twin._cmd(paired_onset, "E", "ground", cmd, args)
                 twin._cmd(paired_onset + 30, "E", "ground", "HEATER", {"on": False})
                 twin._cmd(paired_onset + 30, "E", "ground", "SET_MODE", {"mode": "IDLE"})
+            if not attack and typ == "A2":
+                twin.step(paired_onset)
+                # Bounded legitimate wheel exercise, followed by the normal relaxation controller.
+                twin.wheels[twin.idx["E"]] *= 1.8
             ep = twin.run_episode()
             schema.write_episode(
                 config.EPISODES / "test_hard",

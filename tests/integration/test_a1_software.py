@@ -96,6 +96,7 @@ def live_run(attack_steps: list[list[str]], seed: int = 3, settle_sim_s: int = 6
                 seen["event"].append(msg)
             elif kind == "tm":
                 seen["temp_E"].append(msg.fields["temp_c"])
+                seen["latest_tm_t"] = msg.t
 
     def e_states():
         with lock:
@@ -128,6 +129,8 @@ def live_run(attack_steps: list[list[str]], seed: int = 3, settle_sim_s: int = 6
                 timeout=180,
             )
             assert r.returncode == 0, r.stdout + r.stderr
+        with lock:
+            seen["attack_stopped_t"] = seen.get("latest_tm_t", 0)
         deadline = time.time() + settle_sim_s / SPEED + 30
         while time.time() < deadline:
             st = e_states()
@@ -188,4 +191,6 @@ def test_a1_reassert_escalates_beyond_isolation_and_heals_after_stop():
     assert acts[-1].action in ("safe_mode", "quarantine"), [a.action for a in acts]  # beyond isolation
     hold = [e for e in seen["event"] if e.sat == "E" and "holding containment" in e.text]
     heal = [e for e in seen["event"] if e.sat == "E" and e.kind == "heal" and "healed" in e.text]
-    assert hold and heal[0].t > hold[0].t, seen["logs"]  # no heal while the commands were still arriving
+    assert heal[0].t > seen["attack_stopped_t"], seen["logs"]
+    if hold:  # Quarantine can reject commands before the hold diagnostic is needed.
+        assert heal[0].t > hold[0].t, seen["logs"]

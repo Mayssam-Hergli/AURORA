@@ -5,7 +5,7 @@ primary_horizon_s: 60        # headline numbers use P(F < t + 60 s); all horizon
 stride_s: 2                  # forecaster evaluated every 2 s (forward-filled), lead-time error <= 1 s
 ece_bins: 10
 bootstrap: 2000
-test_splits: [test_id, test_ood, test_real]
+test_splits: [test_id, test_ood, test_real, test_hard]
 baselines: [threshold, trajectory, lstm_ae, gdn]
 response:                    # closed loop (CONTEXT 2, 5.4)
   act_threshold: 0.85

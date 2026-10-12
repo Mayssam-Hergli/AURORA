@@ -144,12 +144,12 @@ The envelope (`id`, `sat`, `origin`, `cmd`) is validated strictly. **`args` that
 
 | Field | Type | Meaning |
 |---|---|---|
-| `action` | `none` \| `safe_mode` \| `block_source` \| `isolate_subsystem` \| `quarantine` | chosen action (`quarantine` includes the reroute over feasible links) |
+| `action` | `none` \| `safe_mode` \| `block_source` \| `cut_heater` \| `quarantine` | chosen action (`quarantine` includes the reroute over feasible links) |
 | `target` | id | satellite acted on |
-| `args` | object, optional | e.g. `{"origin":"isl:A"}` for `block_source`, `{"sub":"thermal"}` for `isolate_subsystem` |
+| `args` | object, optional | e.g. `{"origin":"isl:A"}` for `block_source`, `{"subsystem":"thermal","effect":"heater_off"}` for `cut_heater` |
 | `J` | float or `null` | cost of the chosen action, J(a) = w_r·R + w_m·(1−U) + w_c·C + w_q·Q |
 | `alternatives` | list of `{action, J}` | the other candidates, best first |
-| `gated` | bool or `null` | `true`: Q > θ_uncert (0.35), so the core held instead of isolating. `null`: Q unavailable (single model), gate inactive (D4) |
+| `gated` | bool or `null` | `true`: Q unknown/invalid or above θ_uncert (0.35); link isolation/quarantine withheld, supported local protection allowed. Q remains `null` when unavailable; event data reports `UNKNOWN`, `KNOWN_LOW` or `KNOWN_HIGH` |
 | `q` | float or `null` | the Q used by the gate |
 | `reason` | string | one-line explanation |
 

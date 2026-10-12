@@ -215,7 +215,11 @@ def fig_example(met):
     a1.plot(t, raw[:, s, G.FLAT.index("temp_c")], color=ORANGE, lw=1.6, label="reported temp_c")
     a1.plot(t, raw[:, s, G.FLAT.index("soc_pct")], color=AQUA, lw=1.6, label="reported soc_pct")
     a1.plot(
-        t, raw[:, s, G.FLAT.index("current_ma")] / 100, color=BLUE, lw=1.2, label="current_ma / 100 (INA219)"
+        t,
+        raw[:, s, G.FLAT.index("current_ma")] / 100,
+        color=BLUE,
+        lw=1.2,
+        label="current_ma / 100 (synthetic)",
     )
     a1.legend(frameon=False, fontsize=6.5, loc="upper left")
     a1.set_ylabel("Telemetry")

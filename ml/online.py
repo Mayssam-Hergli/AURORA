@@ -12,7 +12,7 @@ last value on gaps, counter increments, command counts per origin and type);
 tests/test_model_features_metrics.py
 checks that both paths give identical model inputs. If no model is loaded, the Phase-2 trajectory
 forecaster is used as the fallback (model = "trajectory-v0"); it ignores a limit until its channel
-has arrived for a full slope window. Trained models and their calibration.json: `make models`.
+has arrived for a full slope window. Trained models and their calibration.json: `make train`.
 Messages follow docs/interfaces.md 3.5: what a model does not know is null (D4), and warming_up is
 true until the 30 s window is full (the core should not act on those).
 """
@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 
 
 def load_calibration() -> dict | None:
-    """data/models/calibration.json (M5): written by eval.harness, shipped by `make models`."""
+    """data/models/calibration.json (M5): written by eval.harness, shipped by `make train`."""
     path = config.MODELS / "calibration.json"
     return json.loads(path.read_text()) if path.exists() else None
 
@@ -68,13 +68,14 @@ class OnlineForecaster:
         names = names or sorted(p.stem for p in config.MODELS.glob("full_s*.pt"))
         sats, window = config.load("synthetic")["satellites"], config.load("model")["window_s"]
         if not names:
-            log.warning("no trained models in %s: trajectory fallback (run `make models`)", config.MODELS)
+            log.warning("no trained models in %s: trajectory fallback (run `make train`)", config.MODELS)
             return cls([], sats, 1.0, window)
         cal = load_calibration()
         if cal is None and not allow_uncalibrated:
             raise FileNotFoundError(
-                f"trained models in {config.MODELS} but no calibration.json: run `make models` "
-                "(or `make evaluate`, which writes it); allow_uncalibrated=True runs at T = 1.0"
+                f"trained models in {config.MODELS} but no calibration.json: run `make evaluate` "
+                "(or `make train`, which writes temperature calibration); "
+                "allow_uncalibrated=True runs at T = 1.0"
             )
         models = [load_model(n) for n in names]
         if cal is None:

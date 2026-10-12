@@ -49,7 +49,7 @@ def test_from_models_logs_the_fallback_without_models(tmp_path, monkeypatch, cap
     monkeypatch.setattr(config, "MODELS", tmp_path)
     with caplog.at_level("WARNING", logger="ml.online"):
         fc = OnlineForecaster.from_models()
-    assert fc.models == [] and "make models" in caplog.text
+    assert fc.models == [] and "make train" in caplog.text
 
 
 def test_model_bundle_round_trip(tmp_path, monkeypatch):
@@ -78,3 +78,8 @@ def test_model_bundle_round_trip(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="checksum"):
         download.models(archive.as_uri(), "0" * 64)
+
+
+def test_retired_default_release_is_not_downloaded():
+    with pytest.raises(RuntimeError, match="retired 27-channel"):
+        download.models()

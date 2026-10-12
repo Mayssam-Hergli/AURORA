@@ -11,7 +11,7 @@
 | `schema.py` | Section 6.2 fields, forecast message, Section 6.3 episode read/write (+ `ml_labels.json` extension) |
 | `synthetic/` | 12-satellite twin stand-in: geometry, physics, attacks A1–C1, faults F1–F5, sandbox API, generator |
 | `graph.py` | node set (THERMAL, EPS, ADCS, OBC, COMMS, SUN, SAT), edge families and ablation variants |
-| `features.py` | episode → per-tick arrays (27 channels/satellite), normaliser, engineering model g_ij, couplings |
+| `features.py` | episode → per-tick arrays (33 causal channels/satellite), normaliser, engineering model g_ij, couplings |
 | `model.py` | the forecaster (preprocessing inside the module: same code for training, online use, export, PGD) |
 | `dataset.py`, `train.py` | windows + targets (with censoring), ensemble/ablation training |
 | `calibration.py`, `baselines.py` | temperature scaling + ECE; baselines |
