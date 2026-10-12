@@ -385,6 +385,10 @@ def main(argv=None):
         )
     if not a.check:
         write_readme(N)
+        if (EV / "runtime_policy.json").exists() and (EV / "robustness.json").exists():
+            from eval.paper_results import write
+
+            write()
 
 
 if __name__ == "__main__":

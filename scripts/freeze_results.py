@@ -10,6 +10,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import torch
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -50,6 +52,13 @@ def main():
     data = inventory(ROOT / "data" / "episodes", ["*.parquet", "*.json", "index.csv"])
     external = inventory(ROOT / "data" / "opssat-ad", ["*.csv", "*.npz"])
     (res / "DATASET_SHA256SUMS.json").write_text(json.dumps({**data, **external}, indent=1))
+    model_metadata = {}
+    for path in sorted((ROOT / "data" / "models").glob("*.pt")):
+        checkpoint = torch.load(path, weights_only=False)
+        if isinstance(checkpoint, dict) and "variant" in checkpoint:
+            model_metadata[path.name] = {
+                key: checkpoint[key] for key in ("variant", "seed", "model_cfg", "channels", "feature_schema")
+            }
     manifest = {
         "schema": "CASSANDRA hardened run v1",
         "git": {
@@ -73,6 +82,7 @@ def main():
         | inventory(ROOT / "aurora_common", ["*.py"])
         | inventory(ROOT / "eval", ["*.py"])
         | inventory(ROOT / "twin", ["*.py"]),
+        "model_metadata": model_metadata,
         "models": inventory(ROOT / "data" / "models", ["*.pt", "*.npz", "*.json"]),
         "dataset_inventory_sha256": sha(res / "DATASET_SHA256SUMS.json"),
         "results": inventory(frozen, ["*.json"]),
