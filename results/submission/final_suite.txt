@@ -1,0 +1,4 @@
+................................................................
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/mnt/storage/home/rami/Documents/Codex/2026-10-12/referenced-chatgpt-conversation-this-is-an/outputs/AURORA/cassandra/ingest.py:269: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)

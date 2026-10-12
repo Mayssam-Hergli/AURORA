@@ -129,8 +129,11 @@ def live_run(attack_steps: list[list[str]], seed: int = 3, settle_sim_s: int = 6
                 timeout=180,
             )
             assert r.returncode == 0, r.stdout + r.stderr
+            if "--reassert" in argv:
+                with lock:
+                    seen["attack_stopped_t"] = seen.get("latest_tm_t", 0)
         with lock:
-            seen["attack_stopped_t"] = seen.get("latest_tm_t", 0)
+            seen.setdefault("attack_stopped_t", seen.get("latest_tm_t", 0))
         deadline = time.time() + settle_sim_s / SPEED + 30
         while time.time() < deadline:
             st = e_states()

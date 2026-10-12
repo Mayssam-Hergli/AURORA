@@ -6,7 +6,9 @@ Two-seed preliminary evaluation,PASS,results/submission/metrics.json,24 validati
 Desktop inference timing,PASS,results/submission/latency.json,x86_64 inference only; no planning or ARM
 Static lint,PASS,ruff check .,No lint errors
 Updated paper compilation,PASS,docs/paper/CASSANDRA_paper_updated.tex,Two successful local LaTeX passes; rendered visually inspected
-Final expanded Python suite,PENDING,results/submission/final_suite.txt,Deadline-bounded run; see actual terminal outcome
+Final expanded Python suite,INTERRUPTED,results/submission/final_suite.txt,Stopped for deadline; not a completed pass
+Final focused regressions,PASS,results/submission/final_regressions.txt,82 passed; process exit 0
+Repeated-attack MQTT recovery,PASS,results/submission/reassert_test.txt,One test passed with two trained models; recovery after attacker ends
 Five-seed and ablation campaign,NOT COMPLETED,ml/configs/model.yaml,Only two full-model seeds trained
 Full runtime-policy and PGD campaign,NOT COMPLETED,scripts/hardening_pipeline.py,Implemented protocol; no submission performance claim
 Physical hardware and flight transfer,NOT CHECKED,docs/HARDENING_REPORT.md,No physical thermal recovery or flight validation

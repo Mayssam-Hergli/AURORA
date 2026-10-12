@@ -20,7 +20,10 @@ Branch `rami`, based on `p9-integration` commit `2de8c0517de5cf8e0d40d57fc8650d5
 - Separate MQTT integration run: **3 passed**.
 - Installed package imports and bundled configurations loaded successfully outside the checkout.
 - Checkpoint metadata preserves each job's actual thread setting: the two completed jobs used three threads; inference used one thread. Remaining training was stopped for the submission deadline. Architecture, epochs and sampling protocol are unchanged.
-- Fresh targeted regressions, static checks and final evaluation evidence are listed in `VERIFICATION_MATRIX.csv` and the final manifest.
+- Final focused regressions: **82 passed**. Repeated-attack MQTT test with the trained two-model ensemble: **passed**, checking recovery after attack repetition ends. The test timestamps the end of the reasserting attacker rather than completion of a later stop-command process.
+- The latest full-suite rerun was interrupted for the deadline. Its partial log is retained; it is not reported as a completed pass.
+- Static lint and changed-file formatting passed. Two unrelated prototype files fail whole-repository formatting and were preserved.
+- Evidence is listed in `VERIFICATION_MATRIX.csv` and `results/submission/manifest.json`.
 
 ## Fresh results
 
