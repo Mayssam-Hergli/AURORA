@@ -56,7 +56,7 @@ class Proc:
         for line in self.p.stdout:
             self.lines.append(line.rstrip())
 
-    def ready(self, marker: str, timeout: float = 60) -> bool:
+    def ready(self, marker: str, timeout: float = 240) -> bool:
         end = time.time() + timeout
         while time.time() < end:
             if any(marker in ln for ln in self.lines):

@@ -2,6 +2,8 @@
 
 import uuid
 
+import pytest
+
 from aurora_common import schemas as S
 from aurora_common import topics as T
 from scripts.replay_twin import ReplayTwin, build_twin, parse_sats
@@ -22,6 +24,73 @@ def temps(bus, sat):
 
 def tc(sat, cmd, args=None, origin="ground"):
     return S.Telecommand(id=uuid.uuid4().hex, t=0.0, sat=sat, origin=origin, cmd=cmd, args=args or {})
+
+
+def _rt(rt, sat, effect, args):
+    rt.on_redteam(T.redteam(sat), S.RedTeam(t=0.0, sat=sat, effect=effect, args=args))
+
+
+def test_redteam_freeze_and_bias_change_only_the_reported_value():
+    bus = FakeBus()
+    rt = ReplayTwin(bus, build_twin(seed=2, duration_s=300), list(T.SATS), start_t=1_800_000_000.0)
+    rt.run = lambda n: [rt.step() for _ in range(n)]
+    rt.run(5)
+    _rt(rt, "E", "freeze_tm", {"sub": "thermal", "field": "temp_c"})
+    rt.on_tc(T.tc("E"), tc("E", "HEATER", {"on": True}))
+    rt.run(60)
+    rep = temps(bus, "E")
+    assert len(set(rep[-55:])) == 1  # frozen
+    assert rt.twin.temp[rt.twin.idx["E"]] > rep[-1] + 5  # physics kept heating
+    _rt(rt, "E", "stop", {})
+    rt.run(2)
+    assert temps(bus, "E")[-1] > rep[-1] + 5
+    _rt(rt, "F", "bias_tm", {"sub": "thermal", "field": "temp_c", "rate_per_s": 0.5})
+    rt.run(20)
+    f = temps(bus, "F")
+    assert f[-1] - rt.twin.temp[rt.twin.idx["F"]] > 8  # reported runs away from the true value
+
+
+def test_relay_reaches_only_feasible_enabled_neighbours_with_isl_origin():
+    bus = FakeBus()
+    rt = ReplayTwin(bus, build_twin(seed=3, duration_s=300), list(T.SATS), start_t=1_800_000_000.0)
+    rt.step()
+    tw = rt.twin
+    x = tw.idx["A"]
+    _rt(rt, "A", "relay_tc", {"cmd": "HEATER", "args": {"on": True}, "period_s": 10.0, "delay_s": 0.0})
+    relayed = []
+    for _ in range(280):
+        rt.step()
+        relayed = [m for t, m in bus.sent if T.kind_of(t)[0] == "tc" and m.origin == "isl:A"]
+        if relayed:
+            break
+    assert relayed, "A never had a neighbour in 280 s"
+    for m in relayed:  # each copy crossed a link that was feasible at its tick
+        k = int(round(m.t - 1_800_000_000.0))
+        assert tw.geo.feasible[k, x, tw.idx[m.sat]], m
+    reach = set(tw.sats) - {"A"}
+    for s in reach:  # cut every link of A (what a quarantine does)
+        rt.on_tc(T.tc("A"), tc("A", "ISL_ENABLE", {"peer": s, "on": False}, origin="core"))
+    n = len(relayed)
+    for _ in range(25):
+        rt.step()
+    after = [m for t, m in bus.sent if T.kind_of(t)[0] == "tc" and m.origin == "isl:A"]
+    assert len(after) == n  # nothing crosses a disabled link
+
+
+def test_fault_injection_parsing_and_effects():
+    from scripts.replay_twin import parse_fault
+
+    assert parse_fault("F5:E@60") == (60, "F5", "E", None)
+    assert parse_fault("F1:B@30:0.03") == (30, "F1", "B", 0.03)
+    with pytest.raises(ValueError):
+        parse_fault("F9:E@1")
+    bus = FakeBus()
+    rt = ReplayTwin(bus, build_twin(seed=4, duration_s=300), list(T.SATS), start_t=1_800_000_000.0)
+    rt.faults.append((3, "F2", "E", 64.0))
+    for _ in range(6):
+        rt.step()
+    e = temps(bus, "E")
+    assert max(e) - sorted(e)[-2] > 50  # one spike, then back
 
 
 def test_parse_sats():

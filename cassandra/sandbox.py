@@ -138,10 +138,27 @@ def refused_in_safe(mode_safe: bool, origin: str, cmd: str, args: dict) -> bool:
 class EngineAdapter:
     """The shadow twin, built with the engine's own hooks (ml/synthetic/engine.py):
     SyntheticTwin.seed_from_observation(obs) then snapshot(include_queue=False) / restore(), so the
-    planner starts from observations with no queued or planned future command (M2)."""
+    planner starts from observations with no queued or planned future command (M2).
 
-    def __init__(self, seed: int = 0, duration_s: int = 120):
-        self.base = _clean_twin(seed, max(120, duration_s))
+    Geometry. Link feasibility is orbital mechanics, which a ground segment knows from the ephemeris;
+    it is not ground truth about an attack. The base twin covers one (time-compressed) orbit; the
+    shadow starts at the orbit phase whose link-feasibility pattern best matches the observed one and
+    propagates from there, so links that open during the rollout are seen (a compromised neighbour's
+    next victims). If no phase matches within `max_mismatch` pairs, the observed geometry is held."""
+
+    def __init__(
+        self, seed: int = 0, rollout_s: int = 30, predict_geometry: bool = True, max_mismatch: int = 4
+    ):
+        from ml import config as ml_config
+        from ml.synthetic.constellation import orbital_period_s
+
+        o = ml_config.load("synthetic")["orbit"]
+        self.period = int(math.ceil(orbital_period_s(o["altitude_km"]) / o.get("orbit_speedup", 1.0)))
+        self.rollout = rollout_s
+        self.predict = predict_geometry
+        self.max_mismatch = max_mismatch
+        T = self.period + rollout_s + 10 if predict_geometry else max(120, rollout_s + 10)
+        self.base = _clean_twin(seed, T)
         snap = getattr(type(self.base), "snapshot", None)
         if not (
             hasattr(type(self.base), "seed_from_observation")
@@ -149,17 +166,39 @@ class EngineAdapter:
             and "include_queue" in inspect.signature(snap).parameters
         ):
             raise RuntimeError("ml/synthetic/engine.py lacks seed_from_observation / snapshot(include_queue)")
+        tw = self.base
+        self.pairs = [f"{tw.sats[i]}-{tw.sats[j]}" for i, j in zip(*np.triu_indices(tw.S, 1))]
+        iu = np.triu_indices(tw.S, 1)
+        self.F = tw.geo.feasible[:, iu[0], iu[1]]  # [T, pairs]
+        self.last_match: tuple[int, int] | None = None
+
+    def phase(self, obs: dict) -> tuple[int, int]:
+        """(tick index, mismatching pairs) of the base orbit that best matches the observed links."""
+        links = obs.get("links", {})
+        known = np.array([p in links for p in self.pairs])
+        o = np.array([bool(links[p]["feasible"]) if p in links else False for p in self.pairs])
+        n = min(self.period, len(self.F) - self.rollout - 1)
+        if not known.any() or n <= 0:
+            return 0, len(self.pairs)
+        mism = (self.F[:n][:, known] != o[known]).sum(1)
+        best = int(np.argmin(mism))
+        return best, int(mism[best])
 
     def shadow(self, obs: dict):
         """A fresh shadow twin seeded from observations, with no queued commands."""
         tw = copy.deepcopy(self.base)
-        tw.seed_from_observation(obs)
+        t, m = self.phase(obs) if self.predict else (0, len(self.pairs))
+        self.last_match = (t, m)
+        if self.predict and m <= self.max_mismatch:
+            tw.seed_from_observation(obs, hold_geometry=False, t_index=t)
+        else:
+            tw.seed_from_observation(obs)
         tw.restore(tw.snapshot(include_queue=False))
         return tw
 
     @property
     def kind(self) -> str:
-        return "engine"
+        return "engine, predicted geometry" if self.predict else "engine, held geometry"
 
 
 def _clean_twin(seed: int, duration_s: int):
@@ -183,17 +222,24 @@ class Sandbox:
         self.profiles = profiles
         self.cfg = sb
         self.rollout = int(sb["rollout_s"])
-        self.horizon = int(cfg["forecast"]["decision_horizon_s"])
+        self.horizon = int(sb.get("risk_horizon_s", cfg["forecast"]["decision_horizon_s"]))
         self.window = int(cfg["forecast"]["window_s"])
         self.w = sb["weights"]
         self.cost = sb["cost"]
         self.allowed = tuple(a for a in sb["candidates"] if a in ACTIONS)
-        self.engine = EngineAdapter(int(sb.get("shadow_seed", 0)), self.rollout + 10)
+        self.engine = EngineAdapter(
+            int(sb.get("shadow_seed", 0)),
+            self.rollout,
+            bool(sb.get("predict_geometry", True)),
+            int(sb.get("geometry_max_mismatch", 4)),
+        )
         self.board = sb["board_model"]
 
     # ------------------------------------------------------------------ observation
     @staticmethod
-    def observation(tick: WorldTick, temps: dict[str, float], rates: dict[str, float]) -> dict:
+    def observation(
+        tick: WorldTick, temps: dict[str, float], rates: dict[str, float], disabled: list[str] | None = None
+    ) -> dict:
         """What the shadow is seeded with. temps/rates may replace reported values (untrusted temp_c)."""
         sats = {}
         for sat, subs in tick.values.items():
@@ -212,7 +258,7 @@ class Sandbox:
             f"{a}-{b}": {"feasible": v["feasible"], "enabled": v["enabled"]}
             for (a, b), v in tick.links.items()
         }
-        return {"t": tick.t, "sats": sats, "links": links}
+        return {"t": tick.t, "sats": sats, "links": links, "disabled": list(disabled or [])}
 
     # ------------------------------------------------------------------ planning
     def candidates(
@@ -248,6 +294,7 @@ class Sandbox:
         budget_ok: bool,
         threats: list[Threat] | None = None,
         allowed: tuple[str, ...] | None = None,
+        disabled: list[str] | None = None,
     ) -> list[Score]:
         """Every candidate scored, best (lowest J) first. `allowed` restricts the actions (escalation)."""
         cands = self.candidates(target, suspicious_origins, budget_ok, allowed)
@@ -259,7 +306,7 @@ class Sandbox:
         if prof.kind == "hw":
             scores = [self._score_board(c, tick, temps, q, threats, now) for c in cands]
             return sorted(scores, key=lambda s: s.J)
-        obs = self.observation(tick, temps, rates)
+        obs = self.observation(tick, temps, rates, disabled)
         base = self.engine.shadow(obs)
         hw_out = [s for s, p in self.profiles.items() if p.kind == "hw"]
         scores = [self._score_twin(c, base, q, hw_out, threats, now) for c in cands]

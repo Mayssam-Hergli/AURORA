@@ -122,6 +122,31 @@ def decision(
     return action, event
 
 
+def ground_hold(t: float, sat: str) -> S.Event:
+    return S.Event(
+        t=t,
+        sat=sat,
+        level="warning",
+        kind="decision",
+        text=(
+            f"[{sat}] quarantined as a suspected relay source: held until ground clears it "
+            "(compromised flight software cannot be shown healthy from telemetry)"
+        ),
+        sparta=["IA-0003", "CM0042"],
+    )
+
+
+def ground_cleared(t: float, sat: str) -> S.Event:
+    return S.Event(
+        t=t,
+        sat=sat,
+        level="info",
+        kind="heal",
+        text=f"[{sat}] cleared by ground (SET_MODE NOMINAL): links restored, back in service",
+        sparta=["CM0042"],
+    )
+
+
 def holding(t: float, sat: str, th) -> S.Event:
     who = th.origin
     return S.Event(

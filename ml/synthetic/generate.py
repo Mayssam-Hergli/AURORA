@@ -59,6 +59,10 @@ def generate(split: str, n: int | None = None, workers: int = 4) -> pd.DataFrame
     n = n or cfg["splits"][split]
     seeds = np.random.default_rng(cfg["split_seeds"][split]).integers(0, 2**31, n)
     jobs = [(split, i, int(s)) for i, s in enumerate(seeds)]
+    if split == "test_real":
+        from eval.datasets.opssat import load_bank
+
+        load_bank()  # build the real-noise bank once, before the workers read it
     if workers > 1:
         with ProcessPoolExecutor(workers) as ex:
             rows = list(ex.map(_one, jobs, chunksize=4))

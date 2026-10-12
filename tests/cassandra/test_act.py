@@ -59,13 +59,30 @@ def test_executor_refuses_to_emit_a_malformed_command():
 
 def test_shadow_never_inherits_the_real_queue():
     """M2: the sandbox plans on observations; the attacker's queued future commands are not copied."""
-    ad = EngineAdapter(seed=0, duration_s=120)
+    ad = EngineAdapter(seed=0, rollout_s=60)
     assert ad.base.queue, "the clean engine schedules background traffic"
     obs = {"t": T0, "sats": {"E": {"temp_c": 40.0, "heater_on": 1, "mode": "NOMINAL"}}, "links": {}}
     sh = ad.shadow(obs)
-    assert sh.queue == [] and sh.commands == []
+    assert sh.queue == [] and sh.commands == [] and sh.c1 is None
     assert sh.heater_cmd[sh.idx["E"]] and sh.temp[sh.idx["E"]] == 40.0  # last observed effect persists
-    assert ad.kind in ("engine", "stand-in")
+    assert ad.kind.startswith("engine")
+
+
+def test_shadow_geometry_matches_the_observed_orbit_phase():
+    """The shadow finds the orbit phase whose link pattern matches the observation, then propagates."""
+    ad = EngineAdapter(seed=0, rollout_s=60)
+    from tests.cassandra.loop import Loop
+
+    lp = Loop(seed=5, duration_s=400).run(150)
+    tw = lp.plant.twin
+    links = {}
+    for i in range(tw.S):
+        for j in range(i + 1, tw.S):
+            links[f"{tw.sats[i]}-{tw.sats[j]}"] = {"feasible": bool(tw.geo.feasible[tw.t - 1, i, j]), "enabled": True}
+    t, mism = ad.phase({"links": links})
+    assert mism <= 2  # the same constellation: some phase matches (almost) exactly
+    sh = ad.shadow({"t": T0, "sats": {}, "links": links})
+    assert sh.t == t and ad.last_match == (t, mism)
 
 
 @pytest.fixture(scope="module")

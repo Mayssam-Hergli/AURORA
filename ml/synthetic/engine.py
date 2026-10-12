@@ -361,7 +361,7 @@ class SyntheticTwin:
     def restore(self, snap):
         self.__dict__.update(copy.deepcopy(snap))
 
-    def seed_from_observation(self, obs: dict) -> None:
+    def seed_from_observation(self, obs: dict, hold_geometry: bool = True, t_index: int = 0) -> None:
         """Set the state from what a defender observed (the core's sandbox shadow, M2).
 
         obs = {"t": float,
@@ -369,9 +369,15 @@ class SyntheticTwin:
                               "temp_rate_c_s" (optional)}},
                "links": {"A-B": {"feasible": bool, "enabled": bool}}}
         A heater observed ON stays latched at full power (its drive shape is unknown to the defender);
-        its power is inferred from the observed heating rate when given. Geometry over the following
-        rollout is held at the observed eclipse, contact and link feasibility. Ground truth is reset:
-        nothing about the scenario is known."""
+        its power is inferred from the observed heating rate when given. Ground truth is reset: nothing
+        about the scenario is known.
+
+        Geometry: hold_geometry=True holds the observed eclipse, contact and link feasibility over the
+        rollout (persistence). hold_geometry=False keeps this twin's own orbit propagation from
+        tick t_index (the caller has matched its orbit phase to the observed links), so links that
+        open during the rollout are seen; ground contact is still held (Earth rotation is not part of
+        the match). Link enable flags: observed where the link is feasible, assumed on elsewhere,
+        except the links in obs["disabled"] (cut on purpose, e.g. by a quarantine)."""
         th = self.cfg["thermal"]
         for s, sat in enumerate(self.sats):
             o = obs.get("sats", {}).get(sat)
@@ -398,18 +404,24 @@ class SyntheticTwin:
                     + th["conductance_w_per_k"] * (o["temp_c"] - th["t_env_c"])
                 )
                 self.heater_power[s] = float(np.clip(p, 0.0, 200.0))
-            if "eclipse" in o:
+            if "eclipse" in o and hold_geometry:
                 self.geo.eclipse[:, s] = bool(o["eclipse"])
             if "ground_contact" in o:
                 self.geo.contact[:, s] = bool(o["ground_contact"])
         for key, lk in obs.get("links", {}).items():
             a, b = key.split("-")
             i, j = self.idx[a], self.idx[b]
-            self.geo.feasible[:, i, j] = self.geo.feasible[:, j, i] = bool(lk["feasible"])
-            self.isl_enabled[i, j] = self.isl_enabled[j, i] = bool(lk["enabled"])
+            if hold_geometry:
+                self.geo.feasible[:, i, j] = self.geo.feasible[:, j, i] = bool(lk["feasible"])
+            on = bool(lk["enabled"]) if lk["feasible"] else True
+            self.isl_enabled[i, j] = self.isl_enabled[j, i] = on
+        for key in obs.get("disabled", []):
+            a, b = key.split("-")
+            i, j = self.idx[a], self.idx[b]
+            self.isl_enabled[i, j] = self.isl_enabled[j, i] = False
         self.queue, self.commands, self.c1 = [], [], None
         self.truth = {s: {} for s in self.sats}
-        self.t = 0
+        self.t = int(t_index)
 
     def apply(self, msg: dict):
         """Deliver a telecommand now (Section 6.2 message; origin decides trust)."""

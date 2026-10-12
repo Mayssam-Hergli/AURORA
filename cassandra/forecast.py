@@ -26,10 +26,20 @@ from pathlib import Path
 import numpy as np
 
 from aurora_common import schemas as S
-from cassandra.monitor import slope
+from cassandra.monitor import slope  # noqa: F401  (re-exported for callers)
 from cassandra.world import Note, SatProfile, WorldTick
 
 HORIZONS = (10, 30, 60, 120)
+
+
+def theil_sen(t: np.ndarray, x: np.ndarray) -> float:
+    """Median of the pairwise slopes: one outlier in the window cannot move the trend."""
+    i, j = np.triu_indices(len(t), 1)
+    dt = t[j] - t[i]
+    keep = dt > 0
+    return float(np.median((x[j] - x[i])[keep] / dt[keep])) if keep.any() else 0.0
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -143,8 +153,12 @@ class Trajectory:
             ok = ~np.isnan(x)
             if ok.sum() < 2:
                 continue
-            value = float(x[ok][-1])
-            rate = slope(arr[ok, 0], x[ok]) * sign  # > 0: heading for the limit
+            # robust to a single bad sample (F2 SEU bit-flip): Theil-Sen trend (median of pairwise
+            # slopes) and its robust line evaluated at the last tick as the current level (no lag)
+            tt, xx = arr[ok, 0], x[ok]
+            b = theil_sen(tt, xx)
+            value = float(np.median(xx - b * tt) + b * tt[-1])
+            rate = b * sign  # > 0: heading for the limit
             gap = (limit - value) * sign
             if gap <= 0:
                 eta = 0.0

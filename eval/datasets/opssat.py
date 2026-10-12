@@ -42,6 +42,12 @@ def build_bank(min_len: int = 20) -> dict:
 
 def load_bank() -> dict:
     if not BANK.exists():
-        np.savez(BANK, **build_bank())
+        # atomic: write a private temp file, then rename, so a parallel reader never sees half a file
+        # (8 generator workers raced here on 2026-10-12 and one read a partial zip: BadZipFile)
+        import os
+
+        tmp = BANK.with_name(f"noise_bank.{os.getpid()}.tmp.npz")
+        np.savez(tmp, **build_bank())
+        os.replace(tmp, BANK)
     z = np.load(BANK)
     return {k: z[k] for k in z.files}

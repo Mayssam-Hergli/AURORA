@@ -15,7 +15,12 @@ T0 = 1_800_000_000.0
 
 class Loop:
     def __init__(self, seed=3, duration_s=600, cfg_overrides=None):
-        self.cfg = config.load(overrides=cfg_overrides)
+        # trajectory forecaster unless a test asks for the ensemble: results must not depend on
+        # whether trained models happen to be in data/models
+        base = {"forecast": {"ensemble": {"enabled": False}}}
+        self.cfg = config.load(overrides=base)
+        if cfg_overrides:
+            config._merge(self.cfg, cfg_overrides)
         self.core = Core(self.cfg)
         self.published: list[tuple[str, object]] = []
         loop = self

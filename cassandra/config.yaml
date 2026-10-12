@@ -59,8 +59,12 @@ monitor:
   recover_s: 10                   # consistent ticks before an untrusted channel is trusted again
 
 sandbox:
-  rollout_s: 30                   # shadow rollout per candidate (eval.yaml response.rollout_s)
+  rollout_s: 60                   # shadow rollout per candidate: CONTEXT 5.4 "simulate horizon (default 60 s)"
+  risk_horizon_s: 120             # R: P(F within 120 s) at the end of the rollout, so harm that lands after
+                                  # the 30 s rollout (a neighbour just latched by a relay) still counts
   shadow_seed: 0
+  predict_geometry: true          # shadow propagates ISL geometry from the orbit phase matching the observed links
+  geometry_max_mismatch: 4        # more mismatching link pairs than this: hold the observed geometry instead
   candidates: [none, safe_mode, block_source, isolate_subsystem, quarantine]
   weights: {w_r: 1.0, w_m: 0.5, w_c: 0.3, w_q: 0.5}     # J(a) weights (eval.yaml response.weights)
   cost: {none: 0.0, safe_mode: 0.2, block_source: 0.1, isolate_subsystem: 0.25, quarantine: 0.4}
@@ -86,3 +90,6 @@ act:
   escalate_after_s: 20            # containment that leaves P >= plan_p this long is escalated
   threat_min_count: 2             # a hazardous command seen this many times from one origin = continuing threat
   threat_quiet_factor: 2.0        # a threat is over after quiet_factor x its period (+5 s) without a copy
+  hazard_modes: [WHEEL_TEST]      # SET_MODE values treated as hazardous when not from the core. SCIENCE is not:
+                                  # legitimate ground science sessions use it every orbit (seen overnight)
+  none_repeat_s: 30               # a repeated 'none' decision is published at most this often
