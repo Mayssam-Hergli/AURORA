@@ -1,0 +1,12 @@
+check,status,evidence,limit
+Prior hardened full Python suite,PASS,results/submission/previous_full_suite.txt,196 passed before last focused additions and before local trained checkpoints existed
+Latest focused regressions,PASS,results/submission/focused_tests.txt,15 passed
+Separate real MQTT software integration,PASS,results/submission/mqtt_tests.txt,3 passed; software and fake-board only
+Two-seed preliminary evaluation,PASS,results/submission/metrics.json,24 validation and 96 held-out test episodes; 20-second stride
+Desktop inference timing,PASS,results/submission/latency.json,x86_64 inference only; no planning or ARM
+Static lint,PASS,ruff check .,No lint errors
+Updated paper compilation,PASS,docs/paper/CASSANDRA_paper_updated.tex,Two successful local LaTeX passes; rendered visually inspected
+Final expanded Python suite,PENDING,results/submission/final_suite.txt,Deadline-bounded run; see actual terminal outcome
+Five-seed and ablation campaign,NOT COMPLETED,ml/configs/model.yaml,Only two full-model seeds trained
+Full runtime-policy and PGD campaign,NOT COMPLETED,scripts/hardening_pipeline.py,Implemented protocol; no submission performance claim
+Physical hardware and flight transfer,NOT CHECKED,docs/HARDENING_REPORT.md,No physical thermal recovery or flight validation
