@@ -143,3 +143,21 @@ def test_every_core_message_satisfies_the_contract(a1_run):
         S.parse(T.ACTION, S.dump(a))
     for e in a1_run.events:
         S.parse(T.EVENT, S.dump(e))
+
+
+def test_events_carry_machine_readable_data_for_the_dashboard():
+    """core/event.data (interfaces.md 3.7, optional object): the flag says P and the forecaster's ETA,
+    the decision says the cause, the ETA at the action and the action, the heal says the temperature."""
+    loop = Loop(seed=3, duration_s=600)
+    loop.run(60)
+    loop.send("E", "HEATER", {"on": True})
+    loop.run(420)
+    ev = [e for e in loop.events if e.sat == "E" and e.data]
+    flag = next(e for e in ev if e.data.get("event") == "state" and e.data.get("to") == "flagged")
+    assert flag.data["trigger"] == "forecast" and 0 <= flag.data["p"] <= 1 and "eta_s" in flag.data
+    dec = next(e for e in ev if e.data.get("event") == "decision" and e.data["action"] != "none")
+    assert dec.data["cause"]["cmd"] == "HEATER" and dec.data["cause"]["origin"] == "ground"
+    assert dec.data["eta_s"] is None or dec.data["eta_s"] > 0
+    assert dec.data["limit"] == 45.0 and dec.data["channel"] == "temp_c" and dec.data["escalation"] is False
+    heal = next(e for e in ev if e.data.get("event") == "heal")
+    assert heal.data["temp_c"] <= 30.0  # rounded to 0.1 C: 29.96 reads 30.0

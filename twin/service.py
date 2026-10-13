@@ -60,6 +60,7 @@ from aurora_common import schemas as S  # noqa: E402
 from aurora_common import topics as T  # noqa: E402
 from aurora_common.bus import Bus  # noqa: E402
 from ml import config as ml_config  # noqa: E402
+from ml.synthetic.constellation import slots  # noqa: E402
 from ml.synthetic.engine import MODE_SAFE, SyntheticTwin, refused_in_safe  # noqa: E402
 from ml.synthetic.scenarios import sample_spec  # noqa: E402
 
@@ -356,6 +357,9 @@ class TwinService:
         for kind, raw in self.twin.messages_at(tick):
             if kind == "tm":
                 raw = self._reported(raw)
+                if raw["sub"] == "comms":  # extra fields (interfaces.md 3.1 allows them): for the dashboard
+                    plane, phase = self._slot(tick, raw["sat"])
+                    raw = {**raw, "fields": {**raw["fields"], "plane": plane, "phase_deg": round(phase, 2)}}
             if kind == "tc" and raw["id"] in self.applied_ids:
                 continue  # received over the bus; already visible there
             sat = raw.get("sat")
@@ -367,6 +371,11 @@ class TwinService:
             self.bus.publish(topic, model)
             self.stats["published"] += 1
         self._critical_events(tick)
+
+    def _slot(self, k: int, sat: str) -> tuple[int, float]:
+        """Orbit plane and in-plane phase of `sat` at engine tick k (the geometry the twin flies)."""
+        tw = self.twin
+        return slots(tw.cfg, tw.spec.t0_orbit_s + k * tw.dt)[tw.idx[sat]]
 
     def _critical_events(self, k: int):
         """gt/event "critical" when a satellite's true state first reaches F (ground truth for the

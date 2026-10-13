@@ -103,3 +103,118 @@ test("topic parser matches the contract's topic tree", () => {
   assert.equal(kindOf(`${P}/link/A-B`).kind, "link");
   assert.equal(kindOf(`${P}/core/forecast/B`).kind, "forecast");
 });
+
+// ------------------------------------------------------------------ redesign (12 Oct): plain language, orbit, focus
+const { narrate, modelLabel } = require("../store.js");
+const ev = (t, sat, kind, data, level = "info") =>
+  [`${P}/core/event`, JSON.stringify({ v: 1, t, sat, level, kind, text: "raw", data })];
+
+test("events become plain sentences: risk, cause, containment with the limit avoided, heal", () => {
+  const store = createStore();
+  store.handle(...ev(100, "B", "decision", { event: "state", from: "nominal", to: "flagged", trigger: "forecast", p: 0.62, horizon_s: 60, eta_s: 25 }));
+  store.handle(...ev(104, "B", "decision", {
+    event: "decision", action: "isolate_subsystem", eta_s: 23, p: 0.67, channel: "temp_c",
+    cause: { cmd: "HEATER", args: { on: true }, origin: "ground", age_s: 6 },
+  }, "alarm"));
+  store.handle(...ev(130, "B", "heal", { event: "heal", temp_c: 27.3, restored_links: 0 }));
+  assert.deepEqual(store.timeline.map((l) => l.text), [
+    "B healed: back to normal at 27.3 °C",
+    "B contained: heater cut. Temperature limit avoided by 23 s.",
+    "B: failure risk 62% within 60 s",
+    "B: heater switched on by a ground command",
+  ]);
+  assert.equal(store.timeline[1].tone, "warning");
+  assert.equal(store.timeline[3].t, 98); // the command, placed at its own time
+});
+
+test("relayed causes and monitor hits read as sentences; no raw jargon", () => {
+  const lines = [
+    ...narrate({ t: 1, sat: "H", kind: "decision", data: { event: "decision", action: "safe_mode", cause: { cmd: "HEATER", args: { on: true }, origin: "isl:A", age_s: 4 } } }),
+    ...narrate({ t: 2, sat: "E", kind: "monitor", data: { rule: "frozen" } }),
+    ...narrate({ t: 3, sat: "A", kind: "decision", data: { event: "state", from: "nominal", to: "flagged", trigger: "relay", relaying: "HEATER on to I" } }),
+  ];
+  const text = lines.map((l) => l.text).join(" | ");
+  assert.match(text, /heater switched on by a command relayed by A/);
+  assert.match(text, /temperature report stopped changing/);
+  assert.match(text, /forwarding “HEATER on” to neighbours/);
+  assert.doesNotMatch(text, /P\(F|tgn|J=|isolate_subsystem/);
+  assert.equal(modelLabel("tgn-v1"), "learned model (ensemble)");
+  assert.equal(modelLabel("trajectory-v0+est"), "trajectory forecaster");
+});
+
+test("positions: the twin's plane and phase; unpublished satellites (the board) placed from a plane-mate", () => {
+  const store = createStore();
+  store.handle(...tm("A", "comms", 50, { ground_contact: 0, isl_peers: [], rssi_dbm: -90, plane: 1, phase_deg: 10 }));
+  const pos = store.positions();
+  assert.deepEqual([pos.A.plane, pos.A.phase_deg], [1, 10]);
+  assert.deepEqual([pos.B.plane, pos.B.phase_deg], [1, 100]); // 90 deg ahead in plane 1
+  assert.deepEqual([pos.E.plane, pos.E.phase_deg], [2, 40]); // 30 deg phasing between planes
+  assert.ok(pos.L.known);
+});
+
+test("colour roles: nominal has none; at risk, contained, healing, safe hold, quarantined", () => {
+  const store = createStore();
+  const st = (sat, state) => store.handle(`${P}/sat/${sat}/state`, JSON.stringify({ v: 1, sat, t: 1, state }));
+  store.handle(...tm("B", "thermal", 1, { temp_c: 40, heater_on: 1 }));
+  st("B", "nominal");
+  assert.equal(store.toneOf("B"), "");
+  st("B", "flagged");
+  assert.equal(store.toneOf("B"), "caution");
+  store.handle(...ev(2, "B", "decision", { event: "decision", action: "isolate_subsystem" }));
+  assert.equal(store.toneOf("B"), "warning");
+  store.handle(...tm("B", "thermal", 3, { temp_c: 29, heater_on: 0 }));
+  assert.equal(store.toneOf("B"), "warning"); // just contained: red, even below 30 C
+  for (let t = 4; t <= 16; t++) store.handle(...tm("B", "thermal", t, { temp_c: 29 - 0.3 * (t - 3), heater_on: 0 }));
+  assert.equal(store.toneOf("B"), "safe"); // contained 10 s ago and cooling: healing
+  assert.equal(store.stateWord("B"), "healing");
+  st("B", "nominal");
+  assert.equal(store.sats.B.contained, null);
+  st("E", "safe_hold");
+  st("A", "quarantined");
+  assert.deepEqual([store.toneOf("E"), store.toneOf("A")], ["safe", "warning"]);
+});
+
+test("the strip follows the satellite at risk, else B; the countdown runs on message time", () => {
+  const store = createStore();
+  const fc = (sat, t, p60) => store.handle(`${P}/core/forecast/${sat}`, JSON.stringify({
+    v: 1, sat, t, model: "trajectory-v0", p_fail: { 10: 0, 30: 0, 60: p60, 120: p60 }, p_std: null, q: null,
+  }));
+  fc("E", 10, 0.02);
+  assert.equal(store.atRisk("B"), "B");
+  fc("G", 10, 0.4);
+  assert.equal(store.atRisk("B"), "G");
+  store.handle(`${P}/sat/E/state`, JSON.stringify({ v: 1, sat: "E", t: 10, state: "flagged" }));
+  assert.equal(store.atRisk("B"), "E"); // an abnormal state outranks a higher P
+  store.handle(...ev(20, "E", "decision", { event: "state", from: "nominal", to: "flagged", trigger: "forecast", p: 0.3, eta_s: 40 }));
+  fc("E", 30, 0.3);
+  assert.equal(Math.round(store.etaLeft("E")), 30);
+  store.handle(...ev(31, "E", "decision", { event: "decision", action: "isolate_subsystem", eta_s: 29 }));
+  assert.equal(store.etaLeft("E"), null); // contained: no countdown
+});
+
+test("a link enabled again while feasible is a reroute (drawn once)", () => {
+  const store = createStore();
+  const link = (enabled, t) =>
+    store.handle(`${P}/link/C-D`, JSON.stringify({ v: 1, t, a: "C", b: "D", feasible: true, enabled, range_km: 900 }));
+  link(true, 1);
+  link(false, 2);
+  link(true, 3);
+  assert.deepEqual(store.reroutes, [{ key: "C-D", t: 3 }]);
+});
+
+test("a repeated sentence within 60 s is shown once; an estimated ETA says so", () => {
+  const store = createStore();
+  for (const t of [10, 25, 40]) store.handle(...ev(t, "B", "monitor", { rule: "heater_inconsistent" }));
+  assert.equal(store.timeline.length, 1);
+  const [line] = narrate({ t: 1, sat: "E", kind: "decision", data: { event: "decision", action: "isolate_subsystem", eta_s: 29, estimated: true, channel: "temp_c" } });
+  assert.equal(line.text, "E contained: heater cut. Temperature limit avoided by about 29 s (temperature estimated).");
+  const [bat] = narrate({ t: 1, sat: "B", kind: "decision", data: { event: "decision", action: "isolate_subsystem", eta_s: 26, channel: "soc_pct" } });
+  assert.equal(bat.text, "B contained: heater cut. Battery limit avoided by 26 s.");
+});
+
+test("returning to nominal: 'no action needed' only when calm, never right after a heal", () => {
+  const calm = narrate({ t: 1, sat: "E", kind: "decision", data: { event: "state", from: "flagged", to: "nominal", reason: "calm" } });
+  const healed = narrate({ t: 2, sat: "E", kind: "heal", data: { event: "state", from: "flagged", to: "nominal", reason: "healed" } });
+  assert.deepEqual(calm.map((l) => l.text), ["E: risk back to normal, no action needed"]);
+  assert.deepEqual(healed, []);
+});

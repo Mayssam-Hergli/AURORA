@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AURORA subsystem detail</title>
+    <link rel="stylesheet" href="../fonts.css" />
+    <link rel="stylesheet" href="../vendor/uPlot.min.css" />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="detail.css" />
+    <script src="../config.js"></script>
+    <script>
+      (function () {
+        var t = new URLSearchParams(location.search).get("theme") || (window.AURORA_DASH || {}).theme;
+        document.documentElement.dataset.theme = t === "dark" ? "dark" : "light";
+      })();
+    </script>
+  </head>
+  <body class="detail">
+    <header class="top">
+      <h1>AURORA subsystem detail <span class="sub">(not used in the demo; the main screen is <a href="../">here</a>)</span></h1>
+      <div class="status">
+        <span id="clock" class="clock num">--:--:-- UTC</span>
+        <span id="conn" class="conn">connecting…</span>
+      </div>
+    </header>
+    <main class="detail-main">
+      <section class="panel">
+        <h2>Satellites</h2>
+        <table class="sats">
+          <thead>
+            <tr><th>Satellite</th><th>Source</th><th>State</th><th>Temperature</th><th>Battery</th><th>Pointing error</th><th>Mode</th><th>Commands accepted / refused</th><th>Last command from</th><th>Failure risk, next 60 s</th><th>Forecaster</th></tr>
+          </thead>
+          <tbody id="sat-rows"></tbody>
+        </table>
+      </section>
+      <section class="panel charts3">
+        <figure class="plot"><figcaption>Temperature, all satellites (°C)</figcaption><div id="c-temp" class="plot-area"></div></figure>
+        <figure class="plot"><figcaption>Battery charge, all satellites (%)</figcaption><div id="c-soc" class="plot-area"></div></figure>
+        <figure class="plot"><figcaption>Pointing error, all satellites (°)</figcaption><div id="c-att" class="plot-area"></div></figure>
+      </section>
+      <section class="panel">
+        <h2>Inter-satellite links</h2>
+        <table class="matrix" id="matrix"></table>
+        <p class="note">Up: feasible and enabled. Cut: feasible but disabled (quarantine or reroute). Blank: no line of sight.</p>
+      </section>
+      <section class="panel">
+        <h2>Telecommands <span class="sub">(newest first; the origin is evidence)</span></h2>
+        <table class="tcs"><thead><tr><th>Time</th><th>Satellite</th><th>From</th><th>Command</th></tr></thead><tbody id="tcs"></tbody></table>
+      </section>
+    </main>
+    <script src="../vendor/mqtt.min.js"></script>
+    <script src="../vendor/uPlot.iife.min.js"></script>
+    <script src="../store.js"></script>
+    <script src="detail.js"></script>
+  </body>
+</html>

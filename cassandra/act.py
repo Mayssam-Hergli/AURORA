@@ -221,13 +221,13 @@ class Responder:
         return min(self.calm, 0.5 * self.warn_threshold(f))
 
     # ------------------------------------------------------------------ helpers
-    def _set(self, out: Outbox, t: float, sat: str, new: str, why: str) -> None:
+    def _set(self, out: Outbox, t: float, sat: str, new: str, why: str, data: dict | None = None) -> None:
         old = self.state[sat]
         if old == new:
             return
         self.state[sat], self.since[sat] = new, t
         out.states.append(S.NodeStateMsg(sat=sat, t=t, state=new, reason=why[:200]))
-        out.events.append(explain.state_change(t, sat, old, new, why))
+        out.events.append(explain.state_change(t, sat, old, new, why, data))
 
     def cause(self, sat: str, t: float) -> dict | None:
         """Most recent telecommand to this satellite that could drive the hazard (not the core's own)."""
@@ -359,11 +359,14 @@ class Responder:
                 if sat in hits or p >= warn or src:
                     if src:
                         why = f"relaying {src} over ISL (suspected compromised neighbour, IA-0003)"
+                        data = {"trigger": "relay", "relaying": src}
                     elif sat in hits:
                         why = "telemetry inconsistent (monitor)"
+                        data = {"trigger": "monitor"}
                     else:
                         why = f"P(F<{h}s)={p:.3g} >= {warn:.3g}"
-                    self._set(out, now, sat, "flagged", why)
+                        data = {"trigger": "forecast", "threshold": round(warn, 4)}
+                    self._set(out, now, sat, "flagged", why, {**explain.risk_data(f, h), **data})
                     self.calm_run[sat] = 0
                     st = "flagged"
             if st == "flagged" and dwell_ok and f is not None and not f.warming_up:
@@ -385,6 +388,7 @@ class Responder:
                             sat,
                             "nominal",
                             f"P(F<{h}s)={p:.3g} < {calm:.3g} for {self.calm_run[sat]} s",
+                            {"reason": "calm"},
                         )
                         self.calm_run[sat] = 0
             if sat in self.ground_hold:
@@ -576,4 +580,4 @@ class Responder:
         self.exhausted.discard(sat)
         self.holding.discard(sat)
         self.verifier.reset(sat)
-        self._set(out, now, sat, "nominal", f"healed after {action}")
+        self._set(out, now, sat, "nominal", f"healed after {action}", {"reason": "healed", "action": action})

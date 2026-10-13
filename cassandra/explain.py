@@ -64,6 +64,21 @@ def eta_text(f: ForecastResult | None) -> str:
     return f" · {name} {d.limit:g} in ~{d.eta_s:.0f} s"
 
 
+def risk_data(f: ForecastResult | None, horizon: int = 60) -> dict:
+    """Machine-readable risk for core/event.data (interfaces.md 3.7): what the dashboard turns into
+    plain language and its countdown. eta_s is the forecaster's time to the limit (null if none)."""
+    if f is None:
+        return {}
+    d = f.driver
+    eta = None if d is None or math.isinf(d.eta_s) else round(d.eta_s, 1)
+    out = {"p": round(f.p(horizon), 3), "horizon_s": horizon, "model": f.model, "eta_s": eta}
+    if d is not None:
+        out.update(
+            channel=d.channel, value=round(d.value, 2), limit=d.limit, estimated=d.channel in f.estimated
+        )
+    return out
+
+
 def decision(
     t: float,
     sat: str,
@@ -110,6 +125,10 @@ def decision(
         text=text,
         sparta=sparta + list(COUNTERMEASURES[chosen.action]),
         data={
+            "event": "decision",
+            "escalation": bool(lead),
+            **risk_data(f, horizon),
+            "cause": None if not cause else {**cause, "age_s": round(cause["age_s"], 1)},
             "action": chosen.action,
             "R": round(chosen.R, 3),
             "U": round(chosen.U, 3),
@@ -133,6 +152,7 @@ def ground_hold(t: float, sat: str) -> S.Event:
             "(compromised flight software cannot be shown healthy from telemetry)"
         ),
         sparta=["IA-0003", "CM0042"],
+        data={"event": "ground_hold"},
     )
 
 
@@ -144,6 +164,7 @@ def ground_cleared(t: float, sat: str) -> S.Event:
         kind="heal",
         text=f"[{sat}] cleared by ground (SET_MODE NOMINAL): links restored, back in service",
         sparta=["CM0042"],
+        data={"event": "ground_cleared"},
     )
 
 
@@ -158,7 +179,7 @@ def holding(t: float, sat: str, th) -> S.Event:
             f"[{sat}] holding containment: {th.cmd} {dict(th.args)} from origin={who} still arriving "
             f"every ~{th.period_s:.0f} s ({th.count} seen); heal waits until it stops"
         ),
-        data={"origin": who, "period_s": th.period_s, "count": th.count},
+        data={"event": "holding", "origin": who, "cmd": th.cmd, "period_s": th.period_s, "count": th.count},
     )
 
 
@@ -174,13 +195,21 @@ def exhausted(t: float, sat: str, action: str | None, why: str, budget_ok: bool)
             "ground action required"
         ),
         sparta=["CM0042"],
+        data={"event": "exhausted", "action": action},
     )
 
 
-def state_change(t: float, sat: str, old: str, new: str, why: str) -> S.Event:
+def state_change(t: float, sat: str, old: str, new: str, why: str, data: dict | None = None) -> S.Event:
     level = {"nominal": "info", "flagged": "warning", "quarantined": "alarm", "safe_hold": "alarm"}[new]
     kind = "heal" if new == "nominal" and old != "flagged" else "decision"
-    return S.Event(t=t, sat=sat, level=level, kind=kind, text=f"[{sat}] {old} -> {new}: {why}")
+    return S.Event(
+        t=t,
+        sat=sat,
+        level=level,
+        kind=kind,
+        text=f"[{sat}] {old} -> {new}: {why}",
+        data={"event": "state", "from": old, "to": new, **(data or {})},
+    )
 
 
 def heal(
@@ -197,6 +226,11 @@ def heal(
             f"back to NOMINAL, {restored} link(s) restored"
         ),
         sparta=["CM0042"],
+        data={
+            "event": "heal",
+            "temp_c": None if temp is None else round(temp, 1),
+            "restored_links": restored,
+        },
     )
 
 

@@ -34,6 +34,20 @@ def orbital_period_s(altitude_km: float) -> float:
     return 2 * np.pi * np.sqrt(a**3 / MU_KM3_S2)
 
 
+def slots(cfg: dict, t_orbit_s: float) -> list[tuple[int, float]]:
+    """(plane 1..planes, argument of latitude in degrees, 0-360) of every satellite at orbit time
+    t_orbit_s: the same Walker layout and propagation as compute(). For displays (the dashboard)."""
+    o = cfg["orbit"]
+    n = np.sqrt(MU_KM3_S2 / (R_EARTH_KM + o["altitude_km"]) ** 3)
+    t = o.get("orbit_speedup", 1.0) * t_orbit_s
+    out = []
+    for p in range(o["planes"]):
+        for k in range(o["per_plane"]):
+            u0 = 360.0 / o["per_plane"] * k + o["phasing_deg"] * p
+            out.append((p + 1, float((u0 + np.rad2deg(n * t)) % 360.0)))
+    return out
+
+
 def compute(cfg: dict, n_ticks: int, t0_s: float, dt_s: float = 1.0) -> Geometry:
     """Geometry for n_ticks starting at orbit time t0_s (seconds since the epoch of the plane set)."""
     o = cfg["orbit"]

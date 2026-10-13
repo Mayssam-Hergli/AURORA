@@ -3,93 +3,78 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AURORA mission control</title>
+    <title>AURORA ground segment</title>
+    <link rel="stylesheet" href="fonts.css" />
     <link rel="stylesheet" href="vendor/uPlot.min.css" />
     <link rel="stylesheet" href="style.css" />
+    <script src="config.js"></script>
+    <script>
+      // theme before first paint: ?theme=dark or config.js
+      (function () {
+        var t = new URLSearchParams(location.search).get("theme") || (window.AURORA_DASH || {}).theme;
+        document.documentElement.dataset.theme = t === "dark" ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body>
     <header class="top">
-      <div class="brand">
-        <span class="brand-name">AURORA</span>
-        <span class="brand-sub">CASSANDRA predictive defence · 12-satellite constellation</span>
-      </div>
-      <nav class="tabs" role="tablist">
-        <button class="tab active" data-view="overview" role="tab">Overview <kbd>1</kbd></button>
-        <button class="tab" data-view="links" role="tab">Links <kbd>2</kbd></button>
-        <button class="tab" data-view="satellites" role="tab">Satellites <kbd>3</kbd></button>
-      </nav>
+      <h1>AURORA ground segment</h1>
       <div class="status">
-        <span id="conn" class="pill pill-off">connecting…</span>
-        <span id="rate" class="muted">0 msg/s</span>
-        <span id="clock" class="clock" title="time of the latest telemetry (message time, UTC)">--:--:--</span>
-        <button id="fullscreen" class="ghost" title="Full screen (F11)">⛶</button>
+        <span id="clock" class="clock num">--:--:-- UTC</span>
+        <span id="conn" class="conn">connecting…</span>
       </div>
     </header>
 
-    <main id="view-overview" class="view overview">
-      <section class="tiles" id="tiles" aria-label="Satellites"></section>
+    <main class="main">
+      <section class="panel constellation" aria-label="Constellation">
+        <svg id="sky" viewBox="95 0 810 760" preserveAspectRatio="xMidYMid meet" role="img"
+             aria-label="Twelve satellites in three orbital planes, with their inter-satellite links"></svg>
+        <ul class="legend" aria-label="Legend">
+          <li><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" class="mk-sim" /></svg>simulated by the digital twin</li>
+          <li><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" class="mk-hw" /></svg>physical board</li>
+          <li><svg viewBox="0 0 28 20" aria-hidden="true"><line x1="2" y1="10" x2="26" y2="10" class="ln-up" /></svg>active link</li>
+          <li><svg viewBox="0 0 28 20" aria-hidden="true"><line x1="2" y1="10" x2="26" y2="10" class="ln-cut" /></svg>cut link</li>
+          <li><i class="sw sw-caution"></i>at risk</li>
+          <li><i class="sw sw-warning"></i>contained</li>
+          <li><i class="sw sw-safe"></i>safe hold or healing</li>
+        </ul>
+      </section>
 
-      <section class="focus" aria-label="Focused satellite">
-        <div class="focus-head">
-          <span class="focus-sat" id="focus-sat">B</span>
-          <span id="focus-badge" class="badge"></span>
-          <span id="focus-state" class="state-word"></span>
-          <span id="focus-reason" class="muted focus-reason"></span>
-          <span id="focus-model" class="muted model"></span>
-        </div>
-        <div class="charts">
-          <figure class="chart-box wide">
-            <figcaption>Failure probability <span class="legend"><i class="sw sw-p30"></i>P(F&lt;30 s) <i class="sw sw-p60"></i>P(F&lt;60 s) ±σ <i class="sw sw-warn"></i>flag <i class="sw sw-act"></i>plan (J decides)</span></figcaption>
-            <div class="chart" id="chart-p"></div>
-          </figure>
-          <figure class="chart-box">
-            <figcaption>Bus temperature (°C)</figcaption>
-            <div class="chart" id="chart-temp"></div>
-          </figure>
-          <figure class="chart-box">
-            <figcaption>Battery state of charge (%)</figcaption>
-            <div class="chart" id="chart-soc"></div>
-          </figure>
+      <section class="panel doing" aria-label="What CASSANDRA is doing">
+        <h2>What CASSANDRA is doing</h2>
+        <ol id="timeline" class="timeline"></ol>
+        <div class="options" id="options" hidden>
+          <h3>Options compared <span class="sub">(lower cost is better)</span></h3>
+          <p id="options-for" class="options-for"></p>
+          <ol id="bars" class="bars"></ol>
         </div>
       </section>
 
-      <aside class="side">
-        <section class="card action" aria-label="Last decision">
-          <h2>Last decision</h2>
-          <div id="action"><p class="muted">No decision yet.</p></div>
-        </section>
-        <section class="card events" aria-label="Event log">
-          <h2>Event log</h2>
-          <ol id="events" class="event-list"><li class="muted">Waiting for core/event…</li></ol>
-        </section>
-      </aside>
-    </main>
-
-    <main id="view-links" class="view links" hidden>
-      <section class="card">
-        <h2>Inter-satellite links <span class="legend"><i class="cell-up"></i>up <i class="cell-cut"></i>cut (feasible, disabled) <i class="cell-none"></i>no line of sight</span></h2>
-        <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
-        <p id="link-counts" class="muted"></p>
+      <section class="panel risk" aria-label="Satellite at risk">
+        <div class="who">
+          <span id="who-label" class="who-label">Watching</span>
+          <span class="who-row"><span id="risk-sat" class="risk-sat">B</span><span id="risk-state" class="risk-state"></span></span>
+          <span id="countdown" class="countdown num" hidden></span>
+          <span id="risk-model" class="model"></span>
+        </div>
+        <figure class="plot">
+          <figcaption>Temperature (°C)</figcaption>
+          <div id="plot-temp" class="plot-area"></div>
+        </figure>
+        <figure class="plot">
+          <figcaption>Failure risk, next 60 s</figcaption>
+          <div id="plot-risk" class="plot-area"></div>
+        </figure>
       </section>
     </main>
 
-    <main id="view-satellites" class="view satellites" hidden>
-      <figure class="chart-box"><figcaption>Bus temperature, all satellites (°C)</figcaption><div class="chart" id="chart-all-temp"></div></figure>
-      <figure class="chart-box"><figcaption>State of charge, all satellites (%)</figcaption><div class="chart" id="chart-all-soc"></div></figure>
-      <figure class="chart-box"><figcaption>Attitude error, all satellites (°)</figcaption><div class="chart" id="chart-all-att"></div></figure>
-      <section class="card tcs">
-        <h2>Telecommands <span class="muted">(latest first; origin is evidence)</span></h2>
-        <table class="tc-table"><thead><tr><th>Time</th><th>Sat</th><th>Origin</th><th>Command</th></tr></thead><tbody id="tcs"></tbody></table>
-      </section>
-    </main>
-
-    <footer class="honesty">
-      Satellites marked <b>EMULATED</b> are simulated by the digital twin; <b>HW</b> is a physical board (its temperature may be emulated by firmware). Forecasts are model outputs, not measurements.
+    <footer id="honesty" class="honesty">
+      Hollow circles are simulated by the digital twin. B is a physical board; its temperature is computed by its firmware.
+      Forecasts are model outputs, not measurements.
     </footer>
 
     <script src="vendor/mqtt.min.js"></script>
     <script src="vendor/uPlot.iife.min.js"></script>
-    <script src="config.js"></script>
     <script src="store.js"></script>
     <script src="app.js"></script>
   </body>

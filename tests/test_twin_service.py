@@ -132,3 +132,27 @@ def test_recorder_takes_the_true_crossing_under_masking(tmp_path):
     ep = schema.read_episode(rec.write(tmp_path / "b1"))
     e = ep["ml_labels"].satellites["E"]
     assert e.critical_t == crit.t - T0 and ep["labels"].params["critical_from_truth"] == ["E"]
+
+
+def test_comms_carries_the_plane_and_phase_the_engine_flies():
+    """Extra comms fields for the dashboard (interfaces.md 3.1 allows extra fields): plane 1..3 and the
+    argument of latitude, consistent with the engine's own geometry (positions and link feasibility)."""
+    bus = FakeBus()
+    tw = TwinService(bus, build_twin(1, 150), list(T.SATS), start_t=T0, seed=1)
+    for _ in range(40):
+        tw.step()
+    comms = {m.sat: m.fields for t, m in bus.sent if t.endswith("/tm/comms") and m.t == T0 + 39}
+    assert set(comms) == set(T.SATS)
+    planes = [comms[s]["plane"] for s in T.SATS]
+    assert planes == [1] * 4 + [2] * 4 + [3] * 4
+    phase = np.array([comms[s]["phase_deg"] for s in T.SATS])
+    assert np.allclose(np.diff(phase[:4]) % 360, 90, atol=0.05)  # 4 per plane, 90 deg apart
+    assert np.isclose((phase[4] - phase[0]) % 360, 30, atol=0.05)  # 30 deg phasing between planes
+    # the published phase is the in-plane angle of the engine's own position at that tick
+    pos, inc = tw.twin.geo.pos[39], np.deg2rad(tw.twin.cfg["orbit"]["inclination_deg"])
+    for k, sat in enumerate(T.SATS):
+        om = np.deg2rad(120.0 * (k // 4))
+        x = pos[k, 0] * np.cos(om) + pos[k, 1] * np.sin(om)
+        y = (-pos[k, 0] * np.sin(om) + pos[k, 1] * np.cos(om)) / np.cos(inc)
+        u = np.rad2deg(np.arctan2(y, x)) % 360
+        assert abs((u - phase[k] + 180) % 360 - 180) < 0.05, sat

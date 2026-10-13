@@ -1,0 +1,94 @@
+body.detail {
+  display: block;
+  font-size: 15px;
+}
+.detail .top .sub {
+  font-weight: 400;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.detail .top a {
+  color: var(--ink);
+}
+.detail-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 28px 28px;
+}
+.detail-main > .panel:first-child,
+.detail-main > .charts3 {
+  grid-column: 1 / -1;
+}
+.detail h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.detail h2 .sub {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.detail table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.detail th,
+.detail td {
+  text-align: left;
+  padding: 4px 10px 4px 0;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+.detail th {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.detail td.na {
+  color: var(--ink-2);
+}
+.charts3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  height: 320px;
+}
+.matrix {
+  width: auto !important;
+}
+.matrix td,
+.matrix th {
+  width: 30px;
+  height: 26px;
+  text-align: center;
+  padding: 0 !important;
+}
+.matrix td.up {
+  background: var(--link);
+  opacity: 0.45;
+}
+.matrix td.cut {
+  background: var(--warning);
+}
+.matrix td.self {
+  background: var(--grid);
+}
+.note {
+  color: var(--ink-2);
+}
+.tcs td.isl,
+.tcs td.unknown {
+  color: var(--caution);
+  font-weight: 600;
+}
+.tone-caution {
+  color: var(--caution);
+  font-weight: 600;
+}
+.tone-warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+.tone-safe {
+  color: var(--safe);
+  font-weight: 600;
+}
