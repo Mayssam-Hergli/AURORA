@@ -87,3 +87,6 @@ results/*
 !results/manifest.json
 !results/live_manifest.json
 !results/live_manifest_heat0.2.json
+!results/phase6_block3.json
+!results/phase6_c1_prefix.json
+!results/board_rule_dryrun.txt

@@ -3,7 +3,8 @@ deployed configuration (learned ensemble for twin satellites when data/models ha
 with the live twin (twin/service.py), in process (no broker; the broker path is covered by
 tests/integration). Writes results/live_manifest.json with per-run outcomes.
 
-    python scripts/phase6_runs.py [--seeds 1 2 3] [--out results/live_manifest.json]
+    python scripts/phase6_runs.py [--seeds 1 2 3] [--scenarios A1 C1 N] [--out results/live_manifest.json]
+    python scripts/phase6_runs.py --scenarios C1 --seeds 1 2 3 4 5 6 --no-future-victims  # pre-fix sandbox
 
 Per run: the target's first flag and first action (time after the attack starts, action, true
 temperature), its maximum true temperature and whether it crossed its limit, when it was healed,
@@ -30,27 +31,30 @@ from aurora_common import topics as T  # noqa: E402
 from tests.cassandra.loop import T0, Loop  # noqa: E402
 
 ATTACK_T = 60
-TARGETS = {1: "E", 2: "G", 3: "J"}
-SOURCES = {1: "A", 2: "D", 3: "K"}
+TARGETS = {1: "E", 2: "G", 3: "J", 4: "C", 5: "H", 6: "L"}
+SOURCES = {1: "A", 2: "D", 3: "K", 4: "F", 5: "I", 6: "L"}
 
 
 def redteam(lp, sat, effect, args):
     lp.plant.on_redteam(T.redteam(sat), S.RedTeam(t=lp.now(), sat=sat, effect=effect, args=args))
 
 
-def run(scenario: str, seed: int, ensemble: bool) -> dict:
-    lp = Loop(seed=seed, duration_s=1000, cfg_overrides={"forecast": {"ensemble": {"enabled": ensemble}}})
+def run(scenario: str, seed: int, ensemble: bool, future_victims: bool = True) -> dict:
+    over = {"forecast": {"ensemble": {"enabled": ensemble}}}
+    if not future_victims:  # the sandbox before 13 Oct: relays projected over the rollout only
+        over["sandbox"] = {"future_victim_risk": 0.0}
+    lp = Loop(seed=seed, duration_s=1000, cfg_overrides=over)
     model = lp.core.forecast.ensemble.model if lp.core.forecast.ensemble else "trajectory-v0"
-    target = SOURCES[seed] if scenario == "C1" else TARGETS[seed]
+    target = None if scenario == "N" else SOURCES[seed] if scenario == "C1" else TARGETS[seed]
     lp.run(ATTACK_T)
-    stop_t = {"A1": None, "A1-reassert": 400, "B1": 460, "C1": 560}[scenario]
+    stop_t = {"A1": None, "A1-reassert": 400, "B1": 460, "C1": 560, "N": None}[scenario]
     if scenario == "B1":
         redteam(lp, target, "freeze_tm", {"sub": "thermal", "field": "temp_c"})
     if scenario == "C1":
         redteam(
             lp, target, "relay_tc", {"cmd": "HEATER", "args": {"on": True}, "period_s": 10.0, "delay_s": 2.0}
         )
-    else:
+    elif scenario != "N":
         lp.send(target, "HEATER", {"on": True})
     t = ATTACK_T
     while t < 900:
@@ -64,7 +68,7 @@ def run(scenario: str, seed: int, ensemble: bool) -> dict:
         lp.run(1)
         t += 1
     prof = lp.core.profiles
-    attacked = {target}
+    attacked = set() if target is None else {target}
     if scenario == "C1":  # the victims are the satellites that received relayed hazardous commands
         attacked |= {tc.sat for tc in lp.core.responder.hazards if tc.origin == f"isl:{target}"}
     out = {
@@ -96,6 +100,15 @@ def run(scenario: str, seed: int, ensemble: bool) -> dict:
             "final_state": st[-1][1] if st else "nominal",
         }
     out["satellites"] = sats
+    if scenario == "C1":
+        src_acts = [a for a in lp.actions if a.target == target and a.action != "none"]
+        out["c1"] = {
+            "source_contained": bool(src_acts),
+            "source_action": src_acts[0].action if src_acts else None,
+            "source_action_s_after_attack": None if not src_acts else src_acts[0].t - T0 - ATTACK_T,
+            "victims_touched": sorted(attacked - {target}),  # received a relayed hazardous command
+            "victims_reaching_limit": sorted(s for s in attacked - {target} if sats[s]["critical_reached"]),
+        }
     others_changed = {
         s: [v for _, v in lp.states[s]] for s in lp.states if s not in attacked and lp.states[s]
     }
@@ -113,17 +126,19 @@ def main(argv=None) -> int:
     ap.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
     ap.add_argument("--scenarios", nargs="+", default=["A1", "A1-reassert", "B1", "C1"])
     ap.add_argument("--trajectory", action="store_true", help="force the trajectory forecaster")
+    ap.add_argument("--no-future-victims", action="store_true", help="pre-fix C1 sandbox (comparison)")
     ap.add_argument("--out", default=str(ROOT / "results" / "live_manifest.json"))
     a = ap.parse_args(argv)
     t0 = time.time()
     runs = []
     for sc in a.scenarios:
         for seed in a.seeds:
-            r = run(sc, seed, ensemble=not a.trajectory)
+            r = run(sc, seed, ensemble=not a.trajectory, future_victims=not a.no_future_victims)
             runs.append(r)
             print(
                 json.dumps({k: r[k] for k in ("scenario", "seed", "target", "forecaster")}),
                 json.dumps(r["satellites"]),
+                json.dumps(r.get("c1", "")),
             )
             print(
                 "   false alarms:",

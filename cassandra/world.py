@@ -21,6 +21,29 @@ class SatProfile:
     heater_min_rise_c_s: float = 0.02  # with the heater on, temp_c must rise at least this fast
     heal_below_c: float = 30.0  # heal only once temp_c is back under this
     window_s: int | None = None  # trajectory slope window for this satellite (None: forecast.window_s)
+    act_horizon_s: int | None = None  # decision horizon for this satellite (None: act.horizon_s)
+    plan_p: float | None = None  # P(F < t + act_horizon_s) at which J compares responses (None: act.plan_p)
+    thermal: dict | None = None  # design thermal model: plausible heating-rate bounds (None: the constants)
+
+    def min_rise(self, temp_c: float) -> float:
+        """Slowest plausible heating with the heater commanded on (worst case: eclipse, weakest heater),
+        from the design model C dT/dt = P_heater + P_int - k (T - T_env); the constant without a model."""
+        m = self.thermal
+        if not m:
+            return self.heater_min_rise_c_s
+        p_heat = m["heater_w_min"] if temp_c > m["thermostat_off_c"] else m["thermostat_w"]
+        return (p_heat + m["p_internal_w"] - m["conductance_w_per_k"] * (temp_c - m["t_env_c"])) / m[
+            "heat_capacity_j_per_k"
+        ]
+
+    def max_rise(self, temp_c: float) -> float:
+        """Fastest plausible heating with the heater on (full sun, strongest heater): the estimate used
+        while temp_c is untrusted, so it errs early. The constant heating_rate_c_s without a model."""
+        m = self.thermal
+        if not m:
+            return self.heating_rate_c_s
+        p_in = m["heater_w_max"] + m["p_sun_absorbed_w"] + m["p_internal_w"]
+        return (p_in - m["conductance_w_per_k"] * (temp_c - m["t_env_c"])) / m["heat_capacity_j_per_k"]
 
 
 @dataclass(frozen=True)

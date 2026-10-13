@@ -1,0 +1,42 @@
+# Board rule (act at P(F<30s) >= 0.85), dry-run board = the ESP8266 firmware's thermal model, real time, 13 Oct
+# command: make demo-board-dry  then  make attack A1 TARGET=B   (one board line per second)
+  core |   forecaster: tgn-v1 (5 models) for A,C,D,E,F,G,H,I,J,K,L; uncertainty gate available; trajectory-v0 for hardware B (D7)
+ board |   TC HEATER {'on': True} from ground: accepted (mode NOMINAL)
+ board |   temp=25.55C reported=25.55C heater=1 mode=NOMINAL A:G B:G C:G ok=1 rej=0
+ board |   temp=27.04C reported=27.04C heater=1 mode=NOMINAL A:G B:G C:G ok=1 rej=0
+ board |   temp=28.45C reported=28.45C heater=1 mode=NOMINAL A:G B:G C:G ok=1 rej=0
+  core | [B] nominal -> flagged: P(F<30s)=0.314 >= 0.3
+ board |   temp=29.95C reported=29.95C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=31.41C reported=31.41C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=32.92C reported=32.92C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=34.39C reported=34.39C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=35.99C reported=35.99C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=39.01C reported=39.01C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=40.38C reported=40.38C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=42.02C reported=42.02C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=43.38C reported=43.38C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=44.95C reported=44.95C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=46.41C reported=46.41C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=48.02C reported=48.02C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=49.44C reported=49.44C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=50.87C reported=50.87C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+ board |   temp=52.47C reported=52.47C heater=1 mode=NOMINAL A:G B:R C:G ok=1 rej=0
+  core | [B] P(F<30s)=0.87 (trajectory-v0) · cause: heater latched ON (origin=ground, 19 s ago) -> temp_c 54.0, +1.55/s · T_max 60 in ~4 s · SPARTA IA-0009 · action: isolate_subsystem (J=0.07) · alternatives: safe_mode 0.10, quarantine 0.16, none 1.00 · uncertainty gate inactive (single model)
+ board |   TC HEATER {'on': False} from core: accepted (mode NOMINAL)
+ board |   temp=54.03C reported=54.03C heater=1 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=46.34C reported=46.34C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=40.70C reported=40.70C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=36.52C reported=36.52C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=33.54C reported=33.54C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=31.23C reported=31.23C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=29.60C reported=29.60C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+ board |   temp=28.34C reported=28.34C heater=0 mode=NOMINAL A:G B:R C:G ok=2 rej=0
+  core | [B] healed: temp_c 27.6 C, P(F<60s) < 0.1 for 3 s; back to NOMINAL, 0 link(s) restored
+ board |   temp=27.60C reported=27.60C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=26.93C reported=26.93C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=26.44C reported=26.44C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=25.98C reported=25.98C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=25.78C reported=25.78C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=25.53C reported=25.53C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=25.46C reported=25.46C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0
+ board |   temp=25.31C reported=25.31C heater=0 mode=NOMINAL A:G B:G C:G ok=2 rej=0

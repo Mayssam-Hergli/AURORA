@@ -64,6 +64,9 @@ def profiles(cfg: dict) -> dict[str, SatProfile]:
             heater_min_rise_c_s=float(p["heater_min_rise_c_s"]),
             heal_below_c=float(p["heal_below_c"]),
             window_s=int(p["window_s"]) if p.get("window_s") else None,
+            act_horizon_s=int(p["act_horizon_s"]) if p.get("act_horizon_s") else None,
+            plan_p=float(p["plan_p"]) if p.get("plan_p") is not None else None,
+            thermal=dict(p["thermal"]) if p.get("thermal") else None,
         )
     return out
 

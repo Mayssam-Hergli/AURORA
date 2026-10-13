@@ -22,11 +22,11 @@ Target: about 3 minutes (CONTEXT Section 11), adjusted to what exists (MASTER_PL
 |---|---|---|
 | "Twelve satellites: three physical slots, B is this board; the other eleven are simulated: see the EMULATED badges." | point at the tiles | all green; B shows "HW · temp emulated" |
 | "An attacker who abused ground trust sends one heater command to B." | T4: `make attack A1 TARGET=B` | blue LED on; B's temperature climbs 1.5 °C/s |
-| "CASSANDRA does not wait for the limit. It forecasts the time to failure." | | within ~2 s: B red on the board and the dashboard; decision in the event log: *P(F<60s)=0.58 … cause: heater latched ON (origin=ground) … T_max 60 in ~25 s · IA-0009 · action: isolate_subsystem* |
+| "CASSANDRA does not wait for the limit. It forecasts the time to failure." | | ~3 s after the command: B turns amber on the screen (LED B red) at ~28 °C and the countdown starts. B keeps climbing ~1.5 °C/s. **~19 s after the command, at ~54 °C**, CASSANDRA cuts the heater (board rule: act at P(F<30 s) ≥ 0.85; measured on the dry-run board, `results/board_rule_dryrun.txt`). Timeline: *"B contained: heater cut. Temperature limit avoided by ~4 s."* |
 | "It simulated the alternatives (J values on the right) and chose the least disruptive one: it cuts the heater, B stays in service." | point at Last action | alternatives safe_mode / quarantine / none with their J |
 | "B cools and is healed automatically." | | `healed` event, B green again (seconds) |
 
-If the audience should see a longer climb: `make attack A1 TARGET=B ATTACK_ARGS="--reassert 5 --duration 40"`. The attacker keeps re-sending; CASSANDRA escalates to safe mode (LEDs off), holds while commands keep coming, and heals after `make attack-stop TARGET=B`.
+The board rule (`satellites.board_profile`: `act_horizon_s: 30`, `plan_p: 0.85`) gives the audience ~16 s of visible climb before the cut, with a 6 °C margin to the 60 °C limit. To act earlier, set `act_horizon_s: 60`. Escalation demo: `make attack A1 TARGET=B ATTACK_ARGS="--reassert 5 --duration 40"`: the attacker keeps re-sending; CASSANDRA escalates to safe mode (LEDs off), holds while commands keep coming, and heals after `make attack-stop TARGET=B`.
 
 ## Part 2: masking and propagation in software (about 90 s, 10x)
 Stop T1 (Ctrl-C) and the bridge; then T1: `make demo-sw SPEED=10`. Explain: "the same system, every satellite simulated, time ×10."

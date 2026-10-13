@@ -2,8 +2,10 @@
 possible given its other channels?
 
 Rule `heater_inconsistent`: heater_on = 1 for the whole window, yet the reported temp_c does not rise
-(least-squares slope below the satellite's heater_min_rise_c_s). A frozen or replayed temperature
-under a running heater looks exactly like this. Works with noisy and exact freezes alike.
+(least-squares slope, plus 2 standard errors, below the slowest plausible rise at that temperature:
+SatProfile.min_rise from the design thermal model, or heater_min_rise_c_s for the board). A frozen
+or replayed temperature under a running heater looks exactly like this; honest heating near
+equilibrium does not (there the slowest plausible rise is ~0 and the rule does not fire).
 Rule `frozen`: temp_c identical over the window's messages (distinct message times, not ticks).
 A real, noisy sensor never does that.
 
@@ -37,6 +39,17 @@ def slope(t: np.ndarray, x: np.ndarray) -> float:
     tc = t - t.mean()
     den = float((tc * tc).sum())
     return float((tc * (x - x.mean())).sum() / den) if den > 0 else 0.0
+
+
+def slope_se(t: np.ndarray, x: np.ndarray, b: float) -> float:
+    """Standard error of the least-squares slope b (0 for an exactly straight or constant series)."""
+    n = len(t)
+    tc = t - t.mean()
+    den = float((tc * tc).sum())
+    if n < 3 or den <= 0:
+        return 0.0
+    resid = x - x.mean() - b * tc
+    return float(np.sqrt((resid * resid).sum() / (n - 2) / den))
 
 
 class Monitor:
@@ -97,12 +110,18 @@ class Monitor:
         arr = np.array(h, dtype=float)
         t, temp, heater = arr[:, 0], arr[:, 1], arr[:, 2]
         rate = slope(t, temp)
-        if heater.min() >= 1 and rate < prof.heater_min_rise_c_s:
-            return "heater_inconsistent", {
-                "heater_on_s": len(h),
-                "temp_rate_c_s": round(rate, 4),
-                "min_rise_c_s": prof.heater_min_rise_c_s,
-            }
+        if heater.min() >= 1:
+            # The slowest PLAUSIBLE rise at this temperature (design model: weakest heater, eclipse). Near
+            # equilibrium it is ~0 and the test cannot decide (an exact freeze is still caught below).
+            # Flag only when the measured slope is below it even allowing 2 standard errors of noise.
+            need = prof.min_rise(float(np.mean(temp)))
+            se = slope_se(t, temp, rate)
+            if need >= prof.heater_min_rise_c_s and rate + 2.0 * se < need:
+                return "heater_inconsistent", {
+                    "heater_on_s": len(h),
+                    "temp_rate_c_s": round(rate, 4),
+                    "min_rise_c_s": round(need, 4),
+                }
         if float(temp.max() - temp.min()) <= self.freeze_eps:
             return "frozen", {"value_c": float(temp[-1]), "window_s": len(h)}
         return None, {}

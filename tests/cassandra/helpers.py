@@ -14,6 +14,7 @@ BOARD = {
     "theta_max_deg": None,
     "heating_rate_c_s": 1.5,
     "heater_min_rise_c_s": 0.5,
+    "thermal": None,  # the firmware's constants, not the twin's design model (as in config.yaml)
 }
 
 

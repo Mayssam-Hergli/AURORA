@@ -106,14 +106,14 @@ class Threat:
                 out.append(int(round(t - now)))
             k += 1
 
-    def targets(self, tw) -> list[str]:
-        """Where the next copy lands in the shadow twin."""
+    def targets(self, tw, t: int | None = None) -> list[str]:
+        """Where the next copy lands in the shadow twin (at geometry tick t; default: the twin's now)."""
         if not self.origin.startswith("isl:"):
             return [s for s in self.sats if s in tw.idx]
         x = tw.idx.get(self.origin.split(":", 1)[1])
         if x is None:
             return []
-        t = min(tw.t, tw.T - 1)
+        t = min(tw.t if t is None else t, tw.T - 1)
         return [
             sat
             for j, sat in enumerate(tw.sats)
@@ -219,6 +219,9 @@ class Sandbox:
         self.cfg = sb
         self.rollout = int(sb["rollout_s"])
         self.horizon = int(sb.get("risk_horizon_s", cfg["forecast"]["decision_horizon_s"]))
+        # a satellite newly reached by a continuing relayed hazardous command counts as this likely to
+        # reach F (its heater is latched; only a later containment would save it)
+        self.future_victim_risk = float(sb.get("future_victim_risk", 1.0))
         self.window = int(cfg["forecast"]["window_s"])
         self.w = sb["weights"]
         self.cost = sb["cost"]
@@ -327,6 +330,7 @@ class Sandbox:
         crossed = np.zeros(S, bool)
         due = {th: set(th.due(now, self.rollout)) for th in threats}
         resent = 0
+        reached: set[str] = set()  # satellites a relayed hazardous command lands on, accepted
         for k in range(self.rollout):
             for th, ks in due.items():
                 if k not in ks:
@@ -337,6 +341,8 @@ class Sandbox:
                         continue
                     tw.apply({"sat": sat, "origin": th.origin, "cmd": th.cmd, "args": args})
                     resent += 1
+                    if th.origin.startswith("isl:"):
+                        reached.add(sat)
             tw.step(1)
             temp[k], soc[k] = tw.temp, tw.soc * 100
             for s, sat in enumerate(tw.sats):
@@ -347,12 +353,32 @@ class Sandbox:
                     p.soc_min_pct is not None and tw.soc[s] * 100 < p.soc_min_pct
                 ):
                     crossed[s] = True
+        # The relay keeps going after the rollout (it is a continuing threat): project it over the risk
+        # horizon on the predicted link geometry, with the link state this candidate left (a quarantine
+        # cut the source's links). No physics: only who it would reach.
+        for th in threats:
+            if not th.origin.startswith("isl:"):
+                continue
+            for k in sorted(th.due(now, self.rollout + self.horizon)):
+                if k < self.rollout:
+                    continue
+                for sat in th.targets(tw, tw.t + (k - self.rollout)):
+                    if not refused_in_safe(
+                        tw.mode[tw.idx[sat]] == MODE_SAFE, th.origin, th.cmd, dict(th.args)
+                    ):
+                        reached.add(sat)
+        already = {
+            sat for th in threats for sat in th.sats
+        }  # victims before this decision: physics covers them
+        future = sorted(sat for sat in reached - already if sat in self.profiles and sat != c.target)
         risk = {}
         for s, sat in enumerate(tw.sats):
             p = self.profiles.get(sat)
             if p is None or sat in ignore:
                 continue
             risk[sat] = 1.0 if crossed[s] else self._risk(p, temp[:, s], soc[:, s])
+            if sat in future:
+                risk[sat] = max(risk[sat], self.future_victim_risk)
         R = float(sum(risk.values()))  # expected number of satellites reaching F
         in_service = [tw.mode[tw.idx[s]] == MODE_NOMINAL for s in tw.sats if s in self.profiles]
         U = float(np.mean(in_service)) if in_service else 1.0
@@ -373,6 +399,7 @@ class Sandbox:
                 "target_risk": round(risk.get(c.target, 0.0), 3),
                 "at_risk": sorted(k for k, v in risk.items() if v >= 0.3),
                 "threat_copies_delivered": resent,
+                "future_victims": future,
             },
         )
 

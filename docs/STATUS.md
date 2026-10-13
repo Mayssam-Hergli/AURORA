@@ -1,4 +1,40 @@
-# AURORA status. Updated 2026-10-12 midday (Claude Code for Mayssam Hergli)
+# AURORA status. Updated 2026-10-13 (Claude Code for Mayssam Hergli)
+
+# 13 Oct, Block 3: behaviour fixes and re-runs
+
+Base: `p9-integration`. The `rami` branch is not merged and not used for this submission. All numbers below are simulation results; each line gives its file and command.
+
+**1. Board rule.** Satellite B (the board) is now acted on at **P(F < t + 30 s) ≥ 0.85**, as in the Phase 2 demonstrator; twin satellites keep P(F<60s) ≥ 0.50. Set in `cassandra/config.yaml` `satellites.board_profile` (`act_horizon_s: 30`, `plan_p: 0.85`; `act_horizon_s: 60` uses P(F<60s) instead). Flagging is unchanged (P ≥ 0.30 on the same horizon).
+- Measured on the dry-run board (firmware thermal model, real time): flagged ~3 s after the heater command at 28.5 °C; heater cut ~19 s after the command at **54.0 °C** (P(F<30s) = 0.87, limit 60 °C ~4 s away); peak 54.0 °C; healed at 27.6 °C. Phase 2 measured 18.8 s / 53.3 °C. Source: `results/board_rule_dryrun.txt` (`make demo-board-dry` + `make attack A1 TARGET=B`).
+- Why: before this, the core cut B's heater ~2 s after the attack at ~29 °C, so the audience saw almost no climb (open question of 12 Oct). The margin is now 6 °C; the real board (Block 5) must confirm it.
+
+**2. C1: a continuing relay's future victims.** The sandbox already modelled repeated hazardous commands from one origin (e.g. `isl:A`) as continuing over the 60 s rollout. It now also projects them over the risk horizon (120 s) on the predicted link geometry, with the link state each candidate leaves, and counts every satellite newly reached as a future failure (`sandbox.future_victim_risk: 1.0`). So J can see that containing the source prevents future victims. Quarantine is not hard-coded: it wins only when J finds it cheaper. Code: `cassandra/sandbox.py` `_score_twin`; test `tests/cassandra/test_block3.py::test_c1_sandbox_sees_future_victims_of_a_continuing_relay`.
+
+| C1, seeds 1–6 (sources A, D, K, F, I, L) | Before the fix | After the fix |
+|---|---|---|
+| Source contained (J chose quarantine) | 5 / 6 (seed 1: not contained) | **6 / 6** |
+| Time to contain the source after the attack | 37, 52, 57, 57, 137 s | 12, 12, 12, 12, 32, 42 s |
+| Victims touched (received a relayed heater command) | 10 (4, 2, 1, 1, 1, 1) | **6** (1 per run) |
+| Victims reaching their limit | 0 | 0 |
+
+Sources: before = `results/phase6_c1_prefix.json` (`python scripts/phase6_runs.py --scenarios C1 --seeds 1 2 3 4 5 6 --no-future-victims`, same code with the new term off); after = `results/phase6_block3.json` (`--scenarios C1 --seeds 1 2 3 4 5 6`). The one victim left per run is the first relay, sent 2 s after the compromise, before anything can be observed.
+
+**3. Monitor and estimate: plausible heating rates from the design thermal model.** The rule "heater on but temperature not rising" used a fixed 0.02 °C/s, and false-alarmed live on an honest twin satellite. The physics shows why: with the weakest heater (50 W) in eclipse, a satellite at 29 °C really rises only ~0.007 °C/s. Now:
+- **Monitor:** flags only when the measured slope + 2 standard errors is below the **slowest plausible** rise at that temperature. Where that is under 0.02 °C/s (near equilibrium) the test cannot decide and does not fire; an exactly frozen report is still caught by the "frozen" rule.
+- **Estimate while the reading is untrusted:** rises at the **fastest plausible** rate at that temperature (~0.33 °C/s at 20 °C, 0.2 °C/s at 40 °C) instead of a constant 0.3 °C/s.
+- Both use the satellite's design thermal model (`satellites.defaults.thermal`, the same numbers as the plant's design sheet). The board keeps its firmware constants (`thermal: null`).
+- Code: `cassandra/world.py` `SatProfile.min_rise/max_rise`, `cassandra/monitor.py`, `cassandra/forecast.py`; tests in `tests/cassandra/test_block3.py`.
+
+| Validation (after the fix) | Result |
+|---|---|
+| B1 seeds 1–3 | kept as recorded before the fix (`results/live_manifest.json`, 12 Oct) |
+| B1 new seeds 4–6 (targets C, H, L) | all caught by the monitor 8 s after the attack, contained at 66 / 79 / 68 s, peaks **39.6 / 30.0 / 38.8 °C** (limit 45 °C), all healed |
+| Clean N, seeds 1–3 | **0 false containments**; one brief false flag (E, flagged then nominal, no action) |
+| A1 and A1 `--reassert`, seed 1 (regression) | unchanged: heater cut at 62 s / 33.4 °C; safe mode at 43 s / 28.8 °C; both healed |
+| Every run above | 0 false containments (14 runs); brief false flags on non-attacked satellites at tau ≈ 0.015 still occur (flagged → nominal, no action) |
+
+Source: `results/phase6_block3.json`. Tests: `make test` (see the commit block).
+
 
 # Midday update (12 Oct): Youssef's branches integrated
 

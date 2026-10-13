@@ -12,7 +12,8 @@ least-squares slope over the last `window_s` ticks, t_c = gap / rate, and
 P(F < t + D) = clip(1 - t_c / D, 0, 1), maximised over channels; monotone in D by construction.
 It predicts neither the next subsystem nor maliciousness, and has no ensemble: next_sub,
 p_malicious, p_std and q are null (D4), never invented. When the monitor marks temp_c untrusted,
-the temperature is estimated from the last trusted value plus heater on-time x heating_rate_c_s
+the temperature is estimated from the last trusted value plus heater on-time x the fastest plausible
+heating rate at that temperature (SatProfile.max_rise: design thermal model, or heating_rate_c_s)
 (cooling ignored: conservative), and the model name says so ("trajectory-v0+est").
 """
 
@@ -122,7 +123,9 @@ class Trajectory:
             if self.est_temp is None:
                 self.est_temp = self.last_trusted_temp if self.last_trusted_temp is not None else temp
             if int(th["heater_on"]):
-                self.est_temp += self.prof.heating_rate_c_s
+                self.est_temp += self.prof.max_rise(
+                    self.est_temp
+                )  # fastest plausible: the estimate errs early
             temp, estimated = self.est_temp, ("temp_c",)
         else:
             self.est_temp = None

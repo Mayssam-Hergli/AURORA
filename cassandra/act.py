@@ -1,7 +1,8 @@
 """Act stage (D11: safety, executor and verify in one file) and the per-satellite state machine.
 
 States (interfaces.md 3.3): nominal -> flagged -> quarantined | safe_hold -> nominal.
-P below is P(F < t + horizon_s), horizon_s = 60 by default (config explains why not 30).
+P below is P(F < t + horizon_s), horizon_s = 60 by default (config explains why not 30); a satellite's
+profile may set its own act_horizon_s and plan_p (the board: P(F<30s) >= 0.85, as in Phase 2).
 - nominal -> flagged: P >= warn_p (the ensemble uses tau from calibration.json), or a monitor hit.
 - flagged -> plan: P >= plan_p, re-planned at most every replan_s. The sandbox ranks the candidates
   by J(a); "none" is a candidate, so J decides whether acting is worth it.
@@ -209,6 +210,15 @@ class Responder:
     def initial_states(self, t: float) -> list[S.NodeStateMsg]:
         return [S.NodeStateMsg(sat=s, t=t, state="nominal", reason="core started") for s in self.profiles]
 
+    def hz(self, sat: str) -> int:
+        """Decision horizon of this satellite: its profile's act_horizon_s, else act.horizon_s."""
+        return self.profiles[sat].act_horizon_s or self.horizon
+
+    def plan_at(self, sat: str) -> float:
+        """P(F < t + hz) at which J compares responses: the profile's plan_p (board 0.85), else act.plan_p."""
+        p = self.profiles[sat].plan_p
+        return self.plan_p if p is None else p
+
     def warn_threshold(self, f: ForecastResult | None) -> float:
         if f is not None and self.tau is not None and f.model.startswith("tgn"):
             return self.tau
@@ -349,7 +359,7 @@ class Responder:
             out.events.append(explain.monitor(now, e))
         for sat, prof in self.profiles.items():
             f = forecasts.get(sat)
-            h = self.horizon
+            h = self.hz(sat)
             p = 0.0 if f is None or f.warming_up else f.p(h)
             st, dwell_ok = self.state[sat], now - self.since[sat] >= self.dwell
             bad_trust = bool(untrusted.get(sat))
@@ -372,7 +382,7 @@ class Responder:
             if st == "flagged" and dwell_ok and f is not None and not f.warming_up:
                 if (
                     self.contained[sat] is None
-                    and (p >= self.plan_p or src)
+                    and (p >= self.plan_at(sat) or src)
                     and now - self.last_plan[sat] >= self.replan
                 ):
                     self._plan_and_act(
@@ -424,8 +434,9 @@ class Responder:
             and now - since > 2
         ):
             return f"heater ON again {now - since:.0f} s after {action}"
-        if p >= self.plan_p and now - since >= self.escalate_after:
-            return f"P(F<{self.horizon}s)={p:.2f} still >= {self.plan_p} {now - since:.0f} s after {action}"
+        if p >= self.plan_at(sat) and now - since >= self.escalate_after:
+            h, plan = self.hz(sat), self.plan_at(sat)
+            return f"P(F<{h}s)={p:.2f} still >= {plan} {now - since:.0f} s after {action}"
         return ""
 
     def _inputs(self, forecasts):
@@ -494,7 +505,7 @@ class Responder:
             untrusted_temp,
             gated,
             "",
-            horizon=self.horizon,
+            horizon=self.hz(sat),
             theta=self.safety.theta,
             lead=f"escalation: {self.contained[sat]} did not hold ({why}) -> ",
         )
@@ -542,7 +553,7 @@ class Responder:
             untrusted_temp,
             gated,
             budget_note,
-            horizon=self.horizon,
+            horizon=self.hz(sat),
             theta=self.safety.theta,
         )
         if chosen.action == "none":

@@ -1,0 +1,418 @@
+{
+ "what": "Phase 6 scenario runs, core in closed loop with the live twin (in process, simulated plant)",
+ "command": "python scripts/phase6_runs.py --scenarios C1 --seeds 1 2 3 4 5 6 --no-future-victims --out results/phase6_c1_prefix.json",
+ "git": "dd320f6",
+ "python": "3.11.17",
+ "machine": "x86_64",
+ "wall_s": 187.0,
+ "attack_at_s": 60,
+ "runs": [
+  {
+   "scenario": "C1",
+   "seed": 1,
+   "target": "A",
+   "forecaster": "tgn-v1",
+   "attacked": [
+    "A",
+    "G",
+    "H",
+    "I",
+    "J"
+   ],
+   "satellites": {
+    "A": {
+     "flag_s_after_attack": 2.0,
+     "first_action": null,
+     "actions": [],
+     "action_s_after_attack": null,
+     "true_temp_at_action_c": null,
+     "max_true_temp_c": 26.2,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "nominal"
+    },
+    "G": {
+     "flag_s_after_attack": 355.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 396.0,
+     "true_temp_at_action_c": 37.1,
+     "max_true_temp_c": 37.23,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 529.0,
+     "final_state": "nominal"
+    },
+    "H": {
+     "flag_s_after_attack": 152.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem",
+      "safe_mode"
+     ],
+     "action_s_after_attack": 185.0,
+     "true_temp_at_action_c": 29.26,
+     "max_true_temp_c": 35.24,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 208.0,
+     "final_state": "nominal"
+    },
+    "I": {
+     "flag_s_after_attack": 22.0,
+     "first_action": "safe_mode",
+     "actions": [
+      "safe_mode",
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 44.0,
+     "true_temp_at_action_c": 31.33,
+     "max_true_temp_c": 36.25,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 88.0,
+     "final_state": "nominal"
+    },
+    "J": {
+     "flag_s_after_attack": 338.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 421.0,
+     "true_temp_at_action_c": 38.1,
+     "max_true_temp_c": 38.25,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 659.0,
+     "final_state": "nominal"
+    }
+   },
+   "c1": {
+    "source_contained": false,
+    "source_action": null,
+    "source_action_s_after_attack": null,
+    "victims_touched": [
+     "G",
+     "H",
+     "I",
+     "J"
+    ],
+    "victims_reaching_limit": []
+   },
+   "false_alarms": {
+    "E": [
+     "flagged",
+     "nominal"
+    ]
+   },
+   "false_containments": [],
+   "tick_ms_median": 28.33,
+   "plan_ms_median": 57.6
+  },
+  {
+   "scenario": "C1",
+   "seed": 2,
+   "target": "D",
+   "forecaster": "tgn-v1",
+   "attacked": [
+    "D",
+    "G",
+    "L"
+   ],
+   "satellites": {
+    "D": {
+     "flag_s_after_attack": 2.0,
+     "first_action": "quarantine",
+     "actions": [
+      "quarantine"
+     ],
+     "action_s_after_attack": 137.0,
+     "true_temp_at_action_c": 23.43,
+     "max_true_temp_c": 24.85,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "quarantined"
+    },
+    "G": {
+     "flag_s_after_attack": 62.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 134.0,
+     "true_temp_at_action_c": 37.24,
+     "max_true_temp_c": 37.35,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 308.0,
+     "final_state": "nominal"
+    },
+    "L": {
+     "flag_s_after_attack": 99.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 120.0,
+     "true_temp_at_action_c": 33.51,
+     "max_true_temp_c": 33.72,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 238.0,
+     "final_state": "nominal"
+    }
+   },
+   "c1": {
+    "source_contained": true,
+    "source_action": "quarantine",
+    "source_action_s_after_attack": 137.0,
+    "victims_touched": [
+     "G",
+     "L"
+    ],
+    "victims_reaching_limit": []
+   },
+   "false_alarms": {},
+   "false_containments": [],
+   "tick_ms_median": 26.89,
+   "plan_ms_median": 57.8
+  },
+  {
+   "scenario": "C1",
+   "seed": 3,
+   "target": "K",
+   "forecaster": "tgn-v1",
+   "attacked": [
+    "E",
+    "K"
+   ],
+   "satellites": {
+    "E": {
+     "flag_s_after_attack": 42.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 120.0,
+     "true_temp_at_action_c": 38.82,
+     "max_true_temp_c": 38.95,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 276.0,
+     "final_state": "nominal"
+    },
+    "K": {
+     "flag_s_after_attack": 22.0,
+     "first_action": "quarantine",
+     "actions": [
+      "quarantine"
+     ],
+     "action_s_after_attack": 57.0,
+     "true_temp_at_action_c": 16.51,
+     "max_true_temp_c": 24.55,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "quarantined"
+    }
+   },
+   "c1": {
+    "source_contained": true,
+    "source_action": "quarantine",
+    "source_action_s_after_attack": 57.0,
+    "victims_touched": [
+     "E"
+    ],
+    "victims_reaching_limit": []
+   },
+   "false_alarms": {},
+   "false_containments": [],
+   "tick_ms_median": 26.57,
+   "plan_ms_median": 57.2
+  },
+  {
+   "scenario": "C1",
+   "seed": 4,
+   "target": "F",
+   "forecaster": "tgn-v1",
+   "attacked": [
+    "F",
+    "I"
+   ],
+   "satellites": {
+    "F": {
+     "flag_s_after_attack": 2.0,
+     "first_action": "quarantine",
+     "actions": [
+      "quarantine"
+     ],
+     "action_s_after_attack": 52.0,
+     "true_temp_at_action_c": 23.64,
+     "max_true_temp_c": 24.69,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "quarantined"
+    },
+    "I": {
+     "flag_s_after_attack": 36.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 340.0,
+     "true_temp_at_action_c": 40.92,
+     "max_true_temp_c": 41.0,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 515.0,
+     "final_state": "nominal"
+    }
+   },
+   "c1": {
+    "source_contained": true,
+    "source_action": "quarantine",
+    "source_action_s_after_attack": 52.0,
+    "victims_touched": [
+     "I"
+    ],
+    "victims_reaching_limit": []
+   },
+   "false_alarms": {
+    "B": [
+     "flagged",
+     "nominal"
+    ],
+    "D": [
+     "flagged",
+     "nominal"
+    ],
+    "L": [
+     "flagged",
+     "nominal"
+    ]
+   },
+   "false_containments": [],
+   "tick_ms_median": 27.04,
+   "plan_ms_median": 58.6
+  },
+  {
+   "scenario": "C1",
+   "seed": 5,
+   "target": "I",
+   "forecaster": "tgn-v1",
+   "attacked": [
+    "G",
+    "I"
+   ],
+   "satellites": {
+    "G": {
+     "flag_s_after_attack": 217.0,
+     "first_action": "isolate_subsystem",
+     "actions": [
+      "isolate_subsystem"
+     ],
+     "action_s_after_attack": 235.0,
+     "true_temp_at_action_c": 36.25,
+     "max_true_temp_c": 36.4,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": 366.0,
+     "final_state": "nominal"
+    },
+    "I": {
+     "flag_s_after_attack": 32.0,
+     "first_action": "quarantine",
+     "actions": [
+      "quarantine"
+     ],
+     "action_s_after_attack": 57.0,
+     "true_temp_at_action_c": 21.47,
+     "max_true_temp_c": 24.16,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "quarantined"
+    }
+   },
+   "c1": {
+    "source_contained": true,
+    "source_action": "quarantine",
+    "source_action_s_after_attack": 57.0,
+    "victims_touched": [
+     "G"
+    ],
+    "victims_reaching_limit": []
+   },
+   "false_alarms": {
+    "D": [
+     "flagged"
+    ]
+   },
+   "false_containments": [],
+   "tick_ms_median": 32.59,
+   "plan_ms_median": 66.1
+  },
+  {
+   "scenario": "C1",
+   "seed": 6,
+   "target": "L",
+   "forecaster": "tgn-v1",
+   "attacked": [
+    "D",
+    "L"
+   ],
+   "satellites": {
+    "D": {
+     "flag_s_after_attack": 23.0,
+     "first_action": null,
+     "actions": [],
+     "action_s_after_attack": null,
+     "true_temp_at_action_c": null,
+     "max_true_temp_c": 29.7,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "nominal"
+    },
+    "L": {
+     "flag_s_after_attack": 2.0,
+     "first_action": "quarantine",
+     "actions": [
+      "quarantine"
+     ],
+     "action_s_after_attack": 37.0,
+     "true_temp_at_action_c": 23.37,
+     "max_true_temp_c": 24.7,
+     "limit_c": 45.0,
+     "critical_reached": false,
+     "healed_s_after_attack": null,
+     "final_state": "quarantined"
+    }
+   },
+   "c1": {
+    "source_contained": true,
+    "source_action": "quarantine",
+    "source_action_s_after_attack": 37.0,
+    "victims_touched": [
+     "D"
+    ],
+    "victims_reaching_limit": []
+   },
+   "false_alarms": {
+    "B": [
+     "flagged",
+     "nominal"
+    ]
+   },
+   "false_containments": [],
+   "tick_ms_median": 28.0,
+   "plan_ms_median": 65.2
+  }
+ ]
+}

@@ -14,11 +14,23 @@ satellites:
     t_max_c: 45.0
     soc_min_pct: 30.0
     theta_max_deg: 10.0
-    heating_rate_c_s: 0.3         # used only when temp_c is untrusted: the FASTEST plausible heating of a twin
-                                  # satellite (90 W heater into 300 J/K near 20 C, about 0.32 C/s), so the
-                                  # estimate errs early. 0.2 lagged a fast heater in B1 seed 1 (crossed by 0.3 C)
-    heater_min_rise_c_s: 0.02     # heater on but temp_c rising slower than this = inconsistent telemetry
+    heating_rate_c_s: 0.3         # fallback only (no thermal model): the fastest plausible twin heating near 20 C
+    heater_min_rise_c_s: 0.02     # monitor: below this lowest plausible rise the heater test cannot decide
     heal_below_c: 30.0            # heal only once temp_c is back under this (Phase 2 predictor: < 30 C)
+    # Twin thermal DESIGN model (spacecraft design knowledge, the same numbers as the plant's design
+    # sheet ml/configs/synthetic.yaml thermal; nothing about any attack). C dT/dt = P_in - k (T - T_env).
+    # The monitor flags "heater on but not rising" only below the SLOWEST plausible rise (weakest heater,
+    # eclipse); the estimate used while temp_c is untrusted rises at the FASTEST plausible rate.
+    thermal:
+      heat_capacity_j_per_k: 300.0
+      conductance_w_per_k: 2.0
+      t_env_c: -10.0
+      p_internal_w: 30.0
+      p_sun_absorbed_w: 40.0
+      heater_w_min: 50.0            # commanded heater, weakest unit
+      heater_w_max: 90.0            # commanded heater, strongest unit
+      thermostat_w: 15.0            # below thermostat_off_c heater_on may be the 15 W thermostat
+      thermostat_off_c: 9.0
   overrides: {}
   # The ESP8266 board (Phase 8). `python -m cassandra --twin-sats A,C-L` gives every satellite not
   # listed this profile. Firmware model: 25 C ambient, +1.5 C/s while latched; T_max 60 C matches the
@@ -34,6 +46,11 @@ satellites:
     heater_min_rise_c_s: 0.5
     heal_below_c: 30.0
     window_s: 4
+    thermal: null                 # the firmware's own constants above, not the twin's design model
+    # Board rule (Mayssam, 13 Oct): act at P(F < t + 30 s) >= 0.85, as in the Phase 2 demonstrator, so the
+    # audience sees B climb before CASSANDRA acts. act_horizon_s can be set to 60 (then P(F<60s) >= 0.85).
+    act_horizon_s: 30
+    plan_p: 0.85
 
 ingest:
   hold_s: 3.0                     # a value is held this long after its last message, then stale
@@ -63,7 +80,9 @@ monitor:
 sandbox:
   rollout_s: 60                   # shadow rollout per candidate: CONTEXT 5.4 "simulate horizon (default 60 s)"
   risk_horizon_s: 120             # R: P(F within 120 s) at the end of the rollout, so harm that lands after
-                                  # the 30 s rollout (a neighbour just latched by a relay) still counts
+                                  # the rollout (a neighbour just latched by a relay) still counts
+  future_victim_risk: 1.0         # a satellite a continuing ISL relay newly reaches within rollout + risk
+                                  # horizon counts as reaching F (latched heater) unless the candidate stops it
   shadow_seed: 0
   predict_geometry: true          # shadow propagates ISL geometry from the orbit phase matching the observed links
   geometry_max_mismatch: 4        # more mismatching link pairs than this: hold the observed geometry instead
