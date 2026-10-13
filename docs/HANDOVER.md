@@ -33,8 +33,9 @@ git commit -m "Dashboard redesign (dark cockpit) + handover notes"
 git push origin p9-integration
 ```
 
+**Models release: done (13 Oct).** GitHub release `models-v2` holds `aurora-models-v2.zip` (869,874 B, sha256 `87253c7408976cf9b40100997aa84ee75d9b3783cfef16e75292c560e547bff7`, pinned in `eval/datasets/download.py`; per-file SHA-256s in the release notes). Verified on a clean clone of `p9-integration`: `make models` downloads it, checks the hash, unpacks 8 files into `data/models`, and the core loads `tgn-v1` with 5 models. The GitHub CLI is not installed on this laptop: release edits go through the web page, and a release is only usable once its asset shows as uploaded.
+
 **Not yet done on GitHub:**
-- The **models-v2 release.** `make models` downloads it, and today it returns 404. The bundle is built locally at `dist/aurora-models-v2.zip` (sha256 `87253c7408976cf9b40100997aa84ee75d9b3783cfef16e75292c560e547bff7`, pinned in `eval/datasets/download.py`). The GitHub CLI is **not installed** on this laptop, so upload it in the browser: Releases → Draft a new release → tag `models-v2` → attach the zip → publish.
 - No PR is open. Youssef's PR #2 sits on top of his own branches and is superseded by p9-integration; agree with him before closing it.
 
 ## 3. Run it (laptop: Windows 11 + WSL Ubuntu)
@@ -114,7 +115,7 @@ Do **not** use PR #1's old numbers or the overnight GDN figure (0.80 / 222 s): t
 ## 7. What is left, in order
 
 **Today / first thing**
-1. Commit and push the dashboard work (block in section 2). Upload the models-v2 release.
+1. ~~Commit and push the dashboard work; upload the models-v2 release.~~ Done 13 Oct.
 2. Send Youssef the merge summary; Mayssam has a draft. Agree what happens to PR #2 and his remote p2/p3/p7.
 3. **Board bring-up (G6), about 30 min:** follow [hardware/BRINGUP.md](../hardware/BRINGUP.md) (5 commands).
    - Check that the bridge prints `connected`, B appears as a **square** on the dashboard, and the LEDs follow the states.
