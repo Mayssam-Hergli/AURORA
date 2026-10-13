@@ -218,3 +218,15 @@ test("returning to nominal: 'no action needed' only when calm, never right after
   assert.deepEqual(calm.map((l) => l.text), ["E: risk back to normal, no action needed"]);
   assert.deepEqual(healed, []);
 });
+
+test("every action has a plain phrase (no raw action names on the main screen)", () => {
+  const { ACTION_LABEL } = require("../store.js");
+  assert.deepEqual(ACTION_LABEL, {
+    none: "No action",
+    isolate_subsystem: "Heater cut",
+    safe_mode: "Safe mode",
+    block_source: "Source blocked",
+    quarantine: "Quarantined, links cut",
+  });
+  for (const v of Object.values(ACTION_LABEL)) assert.doesNotMatch(v, /_/);
+});

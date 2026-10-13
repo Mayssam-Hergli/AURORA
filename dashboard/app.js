@@ -58,7 +58,7 @@
     const O = (RAAN[plane - 1] * Math.PI) / 180;
     return { x: C.x + x * Math.cos(O) - y * Math.sin(O), y: C.y - (x * Math.sin(O) + y * Math.cos(O)) };
   }
-  el("circle", { cx: C.x, cy: C.y, r: 64, class: "earth" });
+  el("circle", { cx: C.x, cy: C.y, r: 56, class: "earth" });
   for (const O of RAAN) {
     el("ellipse", { cx: C.x, cy: C.y, rx: R, ry: R * Math.cos(INC), class: "ring", transform: `rotate(${-O} ${C.x} ${C.y})` });
   }
@@ -151,12 +151,18 @@
       if (tone && th && typeof th.temp_c === "number") {
         e.temp.textContent = `${th.temp_c.toFixed(1)} °C`;
         e.temp.setAttribute("x", (lx + (dx / d) * 4).toFixed(1));
-        e.temp.setAttribute("y", (ly + (dy >= 0 ? 34 : -34)).toFixed(1));
+        // outward like the letter, but never past the diagram's top or bottom edge
+        const below = dy >= 0 ? ly + 34 < 780 : ly - 34 < -20;
+        e.temp.setAttribute("y", (ly + (below ? 34 : -34)).toFixed(1));
         e.temp.setAttribute("visibility", "visible");
       } else {
         e.temp.setAttribute("visibility", "hidden");
       }
     }
+    // legend: a colour key appears only while that colour is on screen (nominal stays colourless)
+    const tones = new Set(SATS.map((sat) => store.toneOf(sat, cfg.healBelowC)));
+    for (const t of ["caution", "warning", "safe"]) $("lg-" + t).hidden = !tones.has(t);
+    $("lg-cut").hidden = !Object.values(store.links).some((l) => l.feasible && !l.enabled);
     // the attacked satellite on top
     for (const sat of SATS) if (store.toneOf(sat, cfg.healBelowC)) satLayer.appendChild(satEls[sat].g);
   }
@@ -191,7 +197,7 @@
       .sort((x, y) => x.J - y.J);
     const max = Math.max(...opts.map((o) => o.J), 1e-6);
     const label = ACTION_LABEL[a.action] || a.action;
-    $("options-for").textContent = `${a.target}, ${hhmmss(a.t)}: chosen ${label.toLowerCase()}${a.gated ? " (held by the uncertainty gate)" : ""}`;
+    $("options-for").textContent = `Chosen for ${a.target} at ${hhmmss(a.t)}: ${label}${a.gated ? " (held by the uncertainty gate)" : ""}`;
     $("bars").innerHTML = opts
       .map((o) => `<li class="${o.chosen ? "chosen" : ""}"><span>${esc(ACTION_LABEL[o.action] || o.action)}</span>` +
         `<span class="bar-track"><span class="bar" style="display:block;width:${Math.max(2, (100 * o.J) / max).toFixed(1)}%"></span></span>` +
@@ -218,7 +224,10 @@
         cursor: { show: false },
         tzDate: (ts) => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC"),
         scales: { x: { time: true }, y: { range: yRange } },
-        axes: [Object.assign(axis(), { values: (u, splits) => utc(splits), space: 90 }), Object.assign({ size: 52 }, axis())],
+        axes: [
+          Object.assign(axis(), { values: (u, splits) => utc(splits), space: 110, grid: { show: false } }),
+          Object.assign({ size: 52 }, axis()),
+        ],
         series: [{}, ...series],
         bands,
       },

@@ -87,11 +87,11 @@
 
   // ------------------------------------------------------------------ plain language
   const ACTION_LABEL = {
-    none: "Do nothing",
-    isolate_subsystem: "Isolate the heater",
+    none: "No action",
+    isolate_subsystem: "Heater cut",
     safe_mode: "Safe mode",
-    block_source: "Block the source",
-    quarantine: "Quarantine",
+    block_source: "Source blocked",
+    quarantine: "Quarantined, links cut",
   };
   const CHANNEL = { temp_c: "temperature", soc_pct: "battery charge", att_err_deg: "pointing error" };
   const LIMIT = { temp_c: "temperature limit", soc_pct: "battery limit", att_err_deg: "pointing limit" };
