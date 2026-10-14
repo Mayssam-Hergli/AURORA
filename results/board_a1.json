@@ -1,0 +1,17 @@
+{
+ "what": "A1 (latched ground HEATER on) on the real ESP8266 board as satellite B; the other 11 satellites simulated by the twin. Seconds after the attack command, wall clock, as the dashboard receives them. Board temperature is computed by the firmware (no sensor).",
+ "command": "python scripts/board_a1.py --runs 1",
+ "limit_c": 60,
+ "runs": [
+  {
+   "run": 1,
+   "wall_start": "2026-10-14T12:55:38",
+   "flagged_s": 5.9,
+   "chain_command_s": 5.9,
+   "heater_cut_s": 21.9,
+   "healed_s": 30.0,
+   "peak_temp_c": 54.36,
+   "missing": []
+  }
+ ]
+}

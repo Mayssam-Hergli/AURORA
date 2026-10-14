@@ -92,3 +92,5 @@ results/*
 !results/board_rule_dryrun.txt
 !results/incident_metrics.json
 !results/rehearsal.json
+!results/board_a1.json
+!results/board_a1_curve.csv

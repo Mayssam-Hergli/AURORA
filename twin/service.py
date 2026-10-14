@@ -435,7 +435,9 @@ def main(argv=None) -> int:
         f"{a.duration or 'unlimited'} s, chunk {chunk} s. Simulated (src twin). Ctrl-C to stop.",
         flush=True,
     )
-    period, nxt = 1.0 / a.speed, time.monotonic()
+    # paced on wall time, the clock of the published t: under WSL2 the monotonic clock runs ~2 % slow
+    # (measured 14 Oct), so a monotonic pace drifts behind a real board stamped with Windows time
+    period, nxt = 1.0 / a.speed, time.time()
     try:
         while not a.duration or rt.tick < a.duration:
             rt.step()
@@ -445,7 +447,7 @@ def main(argv=None) -> int:
                     flush=True,
                 )
             nxt += period
-            time.sleep(max(0.0, nxt - time.monotonic()))
+            time.sleep(max(0.0, nxt - time.time()))
     except KeyboardInterrupt:
         pass
     finally:

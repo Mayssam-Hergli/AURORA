@@ -28,6 +28,7 @@ Watch the bus at any time: `make tail TAIL_ARGS="--filter 'aurora/v1/sat/B/#'"` 
    - **about 2 s later** the core prints `[B] nominal -> flagged`, then the decision line, e.g. `P(F<60s)=0.58 … cause: heater latched ON (origin=ground, 2 s ago) … T_max 60 in ~25 s · SPARTA IA-0009 · action: isolate_subsystem (J=0.07)`;
    - the bridge prints `TC HEATER {'on': False} from core: accepted`, B's LED turns **red**, and the temperature falls;
    - a few seconds later: `[B] healed: temp_c 26.2 C …` and B is green again.
+   **Real board, 14 Oct** (`python scripts/board_a1.py`, `results/board_a1.json`): flagged 5.9 s, heater cut 21.9 s at 54.4 °C peak (limit 60), healed 30.0 s after the attack command; the dry-run rehearsal gave 5.4–6.1 / 21.4–22.1 / 30.4–31.1 s. Timings are bus-side; the board's LEDs were **not** seen to change in that run (open item below).
    The action is whatever J picks: `isolate_subsystem` for a single latched command. **Say "contains", not "quarantines".**
 4. With re-assertion (`make attack A1 TARGET=B ATTACK_ARGS="--reassert 5 --duration 60"`), J escalates beyond isolation (safe mode: B's LEDs **off**). In SAFE the bridge refuses `HEATER on` from any origin, the core prints "holding containment …" while the commands keep coming, and B heals after command 5.
 
@@ -49,6 +50,10 @@ Run **only the bridge** (no `make demo-sw`, or the core will contain it): comman
 | Core warns `[B] thermal telemetry stale` | The bridge stopped or the port dropped: restart command 3. |
 | A LED stays dark | That LED is reversed (long leg to the pin). Red instead of green: swap that satellite's two jumpers. |
 | Heater turns back on in SAFE | Someone pressed FLASH: the bridge switches it off again within 1 s (`SAFE: … heater forced OFF`). |
+| Bridge prints `temp=-C`; after a reset the board prints something other than `TELEM …` (e.g. "Focus Station ready") | The board runs another program. Back it up, then flash ours: `.\.venv-win\Scripts\python.exe -m esptool --port COM9 read-flash 0 0x400000 backup.bin`, then `… write-flash 0x0 prototype\phase2-demoirmware\sat_thermal.bin` (needs `pip install esptool` in `.venv-win`). |
+| Heater turns on by itself when a program opens COM9 | DTR is wired to GPIO0 (FLASH): a default port open "presses" it. The bridge opens with DTR/RTS low and sends `C` at start; other tools (Arduino Serial Monitor, plain pyserial) can still toggle it. |
+| Core warns the hardware clock drifts further and further off the twin | Fixed 14 Oct: the twin paced on WSL's monotonic clock, which runs ~2 % slow. If it comes back, restart `make demo-sw`. |
+| LEDs stay green although the bridge status line shows `B:R` (seen 14 Oct; the board heats on `H`, so serial works) | Wiring, not software: `2R` drives D5 low and D6 high. Check B's green leg is on D5 (not 3V3) and red on D6, common cathode through 150 Ω to G (`prototype/phase2-demo/docs/amica_wiring.png`). Test with the bridge stopped: send `2R` / `2O` at 115200 with DTR/RTS low. |
 | Board does not boot with LEDs plugged in | D3, D4, D8 must stay free (boot pins). |
 
 ## Fallback order for the demo

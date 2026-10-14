@@ -326,8 +326,15 @@ def run(a) -> int:
     else:
         import serial  # pyserial
 
-        ser = serial.Serial(a.port, a.baud, timeout=0)
-        time.sleep(2.0)  # the board resets when the port opens
+        # DTR/RTS low before opening: on the NodeMCU, DTR drives GPIO0 (the FLASH button) and a default
+        # open toggles the heater as if FLASH were pressed (seen on the real board, 14 Oct). Then "C" so
+        # every run starts with the heater off.
+        ser = serial.Serial()
+        ser.port, ser.baudrate, ser.timeout = a.port, a.baud, 0
+        ser.dtr = ser.rts = False
+        ser.open()
+        time.sleep(2.0)
+        ser.write(b"C\n")
     inbox: list[tuple[str, bytes]] = []
     lock = threading.Lock()
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"bridge-{a.sat}-{uuid.uuid4().hex[:6]}")
