@@ -6,6 +6,7 @@ window.AURORA_DASH = {
   follow: "", // pin the bottom strip to one satellite; empty = follow the satellite at risk
   fallback: "B", // the bottom strip shows this one while everything is nominal (B = the board)
   planP: 0.5, // decision threshold on the risk plot: from here the core compares responses (act.plan_p)
+  board: { horizonS: 30, planP: 0.85 }, // the board's rule (satellites.board_profile act_horizon_s, plan_p)
   calmP: 0.1, // below this P(F<60 s) a satellite is calm (act.calm_p)
   healBelowC: 30, // a contained satellite under this temperature is healing (satellites.heal_below_c)
   // fixed temperature axis = ambient - 5 .. limit + 5 (cassandra/config.yaml satellites)

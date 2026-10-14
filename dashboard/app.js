@@ -63,6 +63,8 @@
     el("ellipse", { cx: C.x, cy: C.y, rx: R, ry: R * Math.cos(INC), class: "ring", transform: `rotate(${-O} ${C.x} ${C.y})` });
   }
   const linkLayer = el("g", { class: "links" });
+  const relayLayer = el("g", { class: "relay" }); // attack paths of the active incident (C1)
+  const relayEls = {};
   const satLayer = el("g", { class: "sats" });
   const linkEls = {}; // "A-B" -> <line>
   const drawn = new Set(); // reroute draw-ins already played
@@ -120,6 +122,27 @@
         delete linkEls[key];
       }
     }
+    // the active incident's attack paths: source -> each victim, on top of the links
+    const inc = store.activeIncident();
+    const paths = new Set(inc && inc.source ? inc.victims.map((v) => `${inc.source}>${v}`) : []);
+    for (const key of paths) {
+      const [a, b] = key.split(">");
+      const pa = project(pos[a].plane, pos[a].phase_deg);
+      const pb = project(pos[b].plane, pos[b].phase_deg);
+      let line = relayEls[key];
+      if (!line) line = relayEls[key] = el("line", { class: "ln-relay" }, relayLayer);
+      line.setAttribute("x1", pa.x.toFixed(1));
+      line.setAttribute("y1", pa.y.toFixed(1));
+      line.setAttribute("x2", pb.x.toFixed(1));
+      line.setAttribute("y2", pb.y.toFixed(1));
+    }
+    for (const [key, line] of Object.entries(relayEls)) {
+      if (!paths.has(key)) {
+        line.remove();
+        delete relayEls[key];
+      }
+    }
+    $("lg-relay").hidden = paths.size === 0;
     // satellites
     for (const sat of SATS) {
       const s = store.sats[sat];
@@ -167,9 +190,48 @@
     for (const sat of SATS) if (store.toneOf(sat, cfg.healBelowC)) satLayer.appendChild(satEls[sat].g);
   }
 
-  // ------------------------------------------------------------------ what CASSANDRA is doing
+  // ------------------------------------------------------------------ what CASSANDRA is doing: the attack chain
+  const KIND_WORD = {
+    command: "Command", effect: "Effect", deception: "Deception", predicted: "Forecast", action: "Response", healed: "Healed",
+  };
+  const KIND_TONE = { command: "caution", effect: "caution", deception: "caution", predicted: "", action: "warning", healed: "safe" };
+  const STATUS_WORD = { open: "in progress", contained: "contained", closed: "closed, all healed" };
+  let lastChainKey = "";
+  function renderChain() {
+    const inc = store.activeIncident();
+    const key = inc ? `${inc.incident_id}|${inc.updated_t}|${inc.steps.length}` : "none";
+    if (key === lastChainKey) return;
+    lastChainKey = key;
+    if (!inc) {
+      $("chain").innerHTML = `<p class="empty">Watching 12 satellites. No anomalies.</p>`;
+      return;
+    }
+    const who = inc.source
+      ? `<div class="fan"><span class="fan-src">${esc(inc.source)}</span><span class="fan-arrow">relayed to →</span>` +
+        inc.victims.map((v) => `<span class="fan-victim">${esc(v)}</span>`).join("") + `</div>`
+      : "";
+    const head = `<div class="chain-head"><span>Attack chain${inc.sats.length ? " on " + esc(inc.sats.join(", ")) : ""}</span>` +
+      `<span class="chain-status st-${esc(inc.status)}">${esc(STATUS_WORD[inc.status] || inc.status)}</span></div>`;
+    const steps = inc.steps.map((st) => {
+      const tags = (st.sparta || []).map((t) => `<span class="tag">${esc(t.id)}${t.tactic ? " · " + esc(t.tactic) : ""}</span>`).join("");
+      const tone = KIND_TONE[st.kind] || "";
+      const text = String(st.text).replace(/^Forecast:\s*/, "");
+      return `<li class="step ${st.observed ? "obs" : "pred"}${tone ? " tone-" + tone : ""}">` +
+        `<time class="num">${hhmmss(st.t)}</time>` +
+        `<div class="step-body"><div class="step-line"><span class="step-kind">${esc(KIND_WORD[st.kind] || st.kind)}` +
+        `${st.observed ? "" : " · predicted, not observed"}</span>${tags}</div>` +
+        `<span class="step-text">${esc(text)}</span></div></li>`;
+    }).join("");
+    $("chain").innerHTML = head + who + `<ol class="steps">${steps}</ol>`;
+    const list = $("chain").querySelector(".steps");
+    list.scrollTop = list.scrollHeight; // the newest steps stay in view
+    list.classList.toggle("more-above", list.scrollTop > 0); // earlier steps fade out at the top
+  }
+
+  // the flat timeline (kept for the detail page and as a fallback)
   let lastTimelineKey = "";
   function renderTimeline() {
+    if (!$("timeline")) return;
     const lines = store.timeline.slice(0, cfg.timelineLines);
     const key = lines.map((l) => l.t + l.text).join("|") + "|" + Math.floor((store.latestT || 0) / 30);
     if (key === lastTimelineKey) return;
@@ -285,11 +347,15 @@
     plots.temp.setData([tt, tv, tt.map(() => th.limit)]);
     plots.temp.setScale("y", { min: ranges.temp[0], max: ranges.temp[1] });
 
-    const [pt, pv] = windowed(s.series.p60);
-    const lo = windowed(s.series.p60_lo)[1];
-    const hi = windowed(s.series.p60_hi)[1];
+    // the board decides on P(F<30 s) >= 0.85, the twins on P(F<60 s) >= 0.5: plot what decides
+    const board = s.src === "hw" && cfg.board;
+    $("risk-caption").textContent = `Failure risk, next ${board ? cfg.board.horizonS : 60} s`;
+    const [pt, pv] = windowed(board && cfg.board.horizonS === 30 ? s.series.p30 : s.series.p60);
+    const lo = board ? pt.map(() => null) : windowed(s.series.p60_lo)[1];
+    const hi = board ? pt.map(() => null) : windowed(s.series.p60_hi)[1];
     const hasBand = lo.some((x) => x !== null);
-    plots.risk.setData([pt, hasBand ? lo : pt.map(() => null), hasBand ? hi : pt.map(() => null), pv, pt.map(() => cfg.planP)]);
+    const plan = board ? cfg.board.planP : cfg.planP;
+    plots.risk.setData([pt, hasBand ? lo : pt.map(() => null), hasBand ? hi : pt.map(() => null), pv, pt.map(() => plan)]);
   }
 
   // ------------------------------------------------------------------ header, footer, loop
@@ -305,12 +371,12 @@
   function render() {
     renderHeader();
     renderSky(store.positions());
-    renderTimeline();
+    renderChain();
     renderOptions();
     renderRisk();
     renderFooter();
   }
+  window.__aurora = { store, cfg, plots }; // for screenshot scripts and debugging (set before rendering)
   setInterval(render, 1000);
   render();
-  window.__aurora = { store, cfg, plots }; // for screenshot scripts and debugging
 })();

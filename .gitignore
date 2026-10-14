@@ -90,3 +90,4 @@ results/*
 !results/phase6_block3.json
 !results/phase6_c1_prefix.json
 !results/board_rule_dryrun.txt
+!results/incident_metrics.json

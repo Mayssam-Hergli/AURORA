@@ -109,3 +109,15 @@ def test_clean_replay_run_raises_no_alarm():
             heater_ticks += sum(v["thermal"]["heater_on"] for v in tick.values.values() if "thermal" in v)
     assert heater_ticks > 0, "the run should contain legitimate heater activity"
     assert events == [], [e.text for e in events]
+
+
+def test_a_freeze_is_caught_when_the_core_sees_every_second_or_third_message():
+    """Seen live at 10x (13 Oct): a lagging core sees subsampled messages, 2-3 s apart. The old 1.5 s
+    gap rule cleared the window every time and a frozen report was never flagged."""
+    mon = board_monitor()
+    events, t = [], T0
+    for k in range(14):
+        t += 2.0 if k % 2 else 3.0
+        w = world(t, {"B": thermal(26.0, 1)})
+        events += mon.step(w)
+    assert [e.rule for e in events] and mon.untrusted["B"] == {"temp_c"}

@@ -78,7 +78,10 @@ class Monitor:
             msg_t = tick.t + 1.0 - tick.age_s.get(sat, {}).get("thermal", 0.0)
             if h and abs(msg_t - h[-1][0]) < 1e-6:
                 continue
-            if h and msg_t - h[-1][0] > 1.5:
+            # Under load the core sees each satellite's latest message, so the window may be subsampled
+            # (2-3 s apart at 10x). A frozen value is just as constant, and the slope uses message times:
+            # only a real gap (longer than ingest's hold, after which telemetry is stale) restarts it.
+            if h and msg_t - h[-1][0] > 5.0:
                 h.clear()
             h.append((msg_t, float(th["temp_c"]), int(th["heater_on"])))
             if len(h) < self.window:

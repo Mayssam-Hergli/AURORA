@@ -34,6 +34,7 @@
           <li><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" class="mk-sim" /></svg>simulated by the digital twin</li>
           <li><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" class="mk-hw" /></svg>physical board</li>
           <li><svg viewBox="0 0 28 20" aria-hidden="true"><line x1="2" y1="10" x2="26" y2="10" class="ln-up" /></svg>active link</li>
+          <li id="lg-relay" hidden><svg viewBox="0 0 28 20" aria-hidden="true"><line x1="2" y1="10" x2="26" y2="10" class="ln-relay" /></svg>attack path (relayed commands)</li>
           <li id="lg-cut" hidden><svg viewBox="0 0 28 20" aria-hidden="true"><line x1="2" y1="10" x2="26" y2="10" class="ln-cut" /></svg>cut link</li>
           <li id="lg-caution" hidden><i class="sw sw-caution"></i>at risk</li>
           <li id="lg-warning" hidden><i class="sw sw-warning"></i>contained</li>
@@ -43,7 +44,7 @@
 
       <section class="panel doing" aria-label="What CASSANDRA is doing">
         <h2 class="label">What CASSANDRA is doing</h2>
-        <ol id="timeline" class="timeline"></ol>
+        <div id="chain" class="chain"></div>
         <div class="options" id="options" hidden>
           <h3>Options compared <span class="sub">(lower cost is better)</span></h3>
           <p id="options-for" class="options-for"></p>
@@ -63,7 +64,7 @@
           <div id="plot-temp" class="plot-area"></div>
         </figure>
         <figure class="plot">
-          <figcaption>Failure risk, next 60 s</figcaption>
+          <figcaption id="risk-caption">Failure risk, next 60 s</figcaption>
           <div id="plot-risk" class="plot-area"></div>
         </figure>
       </section>

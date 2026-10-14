@@ -344,6 +344,170 @@ h3 {
   font-size: 24px;
 }
 
+/* ---- the attack chain (incident) ---- */
+.chain {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chain .empty {
+  margin: 0;
+  font-size: 24px;
+  color: var(--ink-2);
+}
+.chain-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chain-status {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.chain-status.st-open {
+  color: var(--caution);
+  font-weight: 600;
+}
+.chain-status.st-contained {
+  color: var(--warning);
+  font-weight: 600;
+}
+.chain-status.st-closed {
+  color: var(--safe);
+}
+.fan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 18px;
+}
+.fan-src,
+.fan-victim {
+  font-weight: 600;
+  min-width: 28px;
+  text-align: center;
+  padding: 1px 8px;
+  border: 2px solid var(--caution);
+  border-radius: 2px;
+}
+.fan-src {
+  background: var(--caution);
+  color: var(--panel);
+}
+.fan-arrow {
+  color: var(--ink-2);
+  font-size: 15px;
+}
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none; /* projector: no scrollbar; the newest steps are scrolled into view */
+}
+.steps::-webkit-scrollbar {
+  display: none;
+}
+.steps.more-above {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+}
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 5.2em 1fr;
+  gap: 12px;
+  padding: 0 0 8px 18px;
+  border-left: 2px solid var(--ink-2); /* observed: solid */
+}
+.step.pred {
+  border-left: 2px dashed var(--ink-2); /* predicted: dashed */
+}
+.step::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--ink-2);
+}
+.step.obs::before {
+  background: var(--ink-2);
+}
+.step.tone-caution::before {
+  background: var(--caution);
+  border-color: var(--caution);
+}
+.step.tone-warning::before {
+  background: var(--warning);
+  border-color: var(--warning);
+}
+.step.tone-safe::before {
+  background: var(--safe);
+  border-color: var(--safe);
+}
+.step.pred::before {
+  background: var(--panel);
+  border-style: dashed;
+}
+.step time {
+  color: var(--ink-2);
+  font-size: 15px;
+  white-space: nowrap;
+}
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.step-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.step-kind {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.step-text {
+  font-size: 18px;
+  line-height: 1.3;
+}
+.step.pred .step-text {
+  color: var(--ink-2);
+  font-style: italic;
+  font-size: 15px;
+}
+.tag {
+  font-size: 13px;
+  color: var(--ink-2);
+  border: 1px solid var(--grid);
+  border-radius: 2px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+.ln-relay,
+#sky .ln-relay {
+  stroke: var(--caution);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
 .options {
   border-top: 1px solid var(--grid);
   padding-top: 12px;
@@ -500,6 +664,7 @@ h3 {
   .label {
     font-size: 15px;
   }
+  .step-text,
   .timeline li,
   .bars li,
   .plot figcaption,

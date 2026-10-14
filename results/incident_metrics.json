@@ -1,0 +1,359 @@
+{
+ "what": "Incident correlator metrics: chain-assembly delay (first observed evidence -> incident opened) and C1 victims touched before the source was contained. In process, simulated plant, learned ensemble.",
+ "command": "python scripts/incident_metrics.py",
+ "git": "6f1daca",
+ "wall_s": 364.2,
+ "summary": {
+  "A1": {
+   "runs": 3,
+   "chains_built": 3,
+   "assembly_delay_s": [
+    22.0,
+    52.0,
+    197.0
+   ],
+   "assembly_delay_median_s": 52.0
+  },
+  "B1": {
+   "runs": 3,
+   "chains_built": 3,
+   "assembly_delay_s": [
+    8.0,
+    8.0,
+    8.0
+   ],
+   "assembly_delay_median_s": 8.0,
+   "deception_step": [
+    true,
+    true,
+    true
+   ]
+  },
+  "C1": {
+   "runs": 6,
+   "chains_built": 6,
+   "assembly_delay_s": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "assembly_delay_median_s": 0.0,
+   "victims_touched_before_source_contained": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ]
+  }
+ },
+ "runs": [
+  {
+   "scenario": "A1",
+   "seed": 1,
+   "target": "E",
+   "incident": {
+    "id": "INC-001-E",
+    "status": "closed",
+    "assembly_delay_s": 22.0,
+    "steps": [
+     "command",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": false,
+    "source": null,
+    "victims": [],
+    "victims_touched_before_source_contained": null
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "A1",
+   "seed": 2,
+   "target": "G",
+   "incident": {
+    "id": "INC-001-G",
+    "status": "closed",
+    "assembly_delay_s": 52.0,
+    "steps": [
+     "command",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": false,
+    "source": null,
+    "victims": [],
+    "victims_touched_before_source_contained": null
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "A1",
+   "seed": 3,
+   "target": "J",
+   "incident": {
+    "id": "INC-001-J",
+    "status": "closed",
+    "assembly_delay_s": 197.0,
+    "steps": [
+     "command",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": false,
+    "source": null,
+    "victims": [],
+    "victims_touched_before_source_contained": null
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "B1",
+   "seed": 1,
+   "target": "E",
+   "incident": {
+    "id": "INC-001-E",
+    "status": "closed",
+    "assembly_delay_s": 8.0,
+    "steps": [
+     "command",
+     "deception",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": true,
+    "source": null,
+    "victims": [],
+    "victims_touched_before_source_contained": null
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "B1",
+   "seed": 2,
+   "target": "G",
+   "incident": {
+    "id": "INC-001-G",
+    "status": "closed",
+    "assembly_delay_s": 8.0,
+    "steps": [
+     "command",
+     "deception",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": true,
+    "source": null,
+    "victims": [],
+    "victims_touched_before_source_contained": null
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "B1",
+   "seed": 3,
+   "target": "J",
+   "incident": {
+    "id": "INC-001-J",
+    "status": "closed",
+    "assembly_delay_s": 8.0,
+    "steps": [
+     "command",
+     "deception",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": true,
+    "source": null,
+    "victims": [],
+    "victims_touched_before_source_contained": null
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "C1",
+   "seed": 1,
+   "target": "A",
+   "incident": {
+    "id": "INC-001-A",
+    "status": "closed",
+    "assembly_delay_s": 0.0,
+    "steps": [
+     "command",
+     "command",
+     "command",
+     "action",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": false,
+    "source": "A",
+    "victims": [
+     "I"
+    ],
+    "victims_touched_before_source_contained": [
+     "I"
+    ]
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "C1",
+   "seed": 2,
+   "target": "D",
+   "incident": {
+    "id": "INC-001-D",
+    "status": "closed",
+    "assembly_delay_s": 0.0,
+    "steps": [
+     "command",
+     "command",
+     "command",
+     "action",
+     "effect",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": false,
+    "source": "D",
+    "victims": [
+     "L"
+    ],
+    "victims_touched_before_source_contained": [
+     "L"
+    ]
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "C1",
+   "seed": 3,
+   "target": "K",
+   "incident": {
+    "id": "INC-001-K",
+    "status": "closed",
+    "assembly_delay_s": 0.0,
+    "steps": [
+     "command",
+     "command",
+     "command",
+     "action",
+     "effect",
+     "predicted",
+     "action",
+     "healed"
+    ],
+    "has_deception": false,
+    "source": "K",
+    "victims": [
+     "E"
+    ],
+    "victims_touched_before_source_contained": [
+     "E"
+    ]
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "C1",
+   "seed": 4,
+   "target": "F",
+   "incident": {
+    "id": "INC-002-F",
+    "status": "closed",
+    "assembly_delay_s": 0.0,
+    "steps": [
+     "command",
+     "command",
+     "command",
+     "action",
+     "deception",
+     "predicted"
+    ],
+    "has_deception": true,
+    "source": "F",
+    "victims": [
+     "I"
+    ],
+    "victims_touched_before_source_contained": [
+     "I"
+    ]
+   },
+   "unconfirmed_incidents": 3
+  },
+  {
+   "scenario": "C1",
+   "seed": 5,
+   "target": "I",
+   "incident": {
+    "id": "INC-001-I",
+    "status": "closed",
+    "assembly_delay_s": 0.0,
+    "steps": [
+     "command",
+     "command",
+     "command",
+     "action",
+     "predicted"
+    ],
+    "has_deception": false,
+    "source": "I",
+    "victims": [
+     "G"
+    ],
+    "victims_touched_before_source_contained": [
+     "G"
+    ]
+   },
+   "unconfirmed_incidents": 0
+  },
+  {
+   "scenario": "C1",
+   "seed": 6,
+   "target": "L",
+   "incident": {
+    "id": "INC-001-L",
+    "status": "closed",
+    "assembly_delay_s": 0.0,
+    "steps": [
+     "command",
+     "command",
+     "command",
+     "action",
+     "effect",
+     "predicted"
+    ],
+    "has_deception": false,
+    "source": "L",
+    "victims": [
+     "D"
+    ],
+    "victims_touched_before_source_contained": [
+     "D"
+    ]
+   },
+   "unconfirmed_incidents": 1
+  }
+ ]
+}

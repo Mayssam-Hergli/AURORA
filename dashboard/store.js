@@ -187,6 +187,7 @@
       reroutes: [], // [{key, t}] links that went from disabled to enabled while feasible
       events: [], // newest first
       timeline: [], // plain-language lines, newest first
+      incidents: {}, // incident_id -> latest core/event data of kind "incident" (+ updated_t)
       tcs: [], // newest first, last 50 telecommands (origin is evidence)
       action: null,
       counts: { messages: 0, invalid: 0, ignored: 0 },
@@ -253,6 +254,10 @@
         store.events.unshift(msg);
         if (store.events.length > maxEvents) store.events.length = maxEvents;
         const d = msg.data || {};
+        if (msg.kind === "incident" && d.incident_id) {
+          store.incidents[d.incident_id] = Object.assign({}, d, { updated_t: msg.t });
+          return kind;
+        }
         if (msg.sat && store.sats[msg.sat]) {
           const s = store.sats[msg.sat];
           if (isNum(d.eta_s) && (d.event === "state" || d.event === "decision")) {
@@ -365,6 +370,26 @@
       let i = r.t.length - 1;
       while (i > 0 && tEnd - r.t[i - 1] <= 10) i--;
       return tEnd - r.t[i] >= 5 && r.v[r.v.length - 1] < r.v[i] - 0.2;
+    };
+
+    /** The incident to show: confirmed chains first, then open, contained, or closed in the last
+        `keepClosedS` seconds of message time; the most recently updated within each. Dismissed ones never.
+        null when there is none. */
+    store.activeIncident = (keepClosedS = 600) => {
+      const rank = { open: 3, contained: 2, closed: 1 };
+      let best = null;
+      const better = (x, y) => {
+        for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] > y[i];
+        return false;
+      };
+      for (const inc of Object.values(store.incidents)) {
+        if (inc.dismissed) continue; // a risk flag that calmed down by itself: not an attack chain
+        if (inc.status === "closed" && store.latestT - inc.updated_t > keepClosedS) continue;
+        // confirmed chains (action, deception or relay source) before suspected ones
+        const key = [inc.confirmed === false ? 0 : 1, rank[inc.status] || 0, inc.updated_t];
+        if (!best || better(key, best.key)) best = { inc, key };
+      }
+      return best ? best.inc : null;
     };
 
     /** Plain words for the state, matching toneOf. */

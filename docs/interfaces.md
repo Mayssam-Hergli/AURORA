@@ -1,6 +1,6 @@
 # AURORA interfaces (the contract)
 
-**Version v1.2. Frozen 2026-10-11** (v1.1: SPARTA table, Section 7; v1.2: SAFE semantics, Section 3.2; no message format changed since v1). Source: `docs/CONTEXT.md` Section 6, plus decisions D2–D6, D8 and D9 of `docs/MASTER_PLAN.md`.
+**Version v1.3 (2026-10-13: event kind `incident`). Frozen 2026-10-11** (v1.1: SPARTA table, Section 7; v1.2: SAFE semantics, Section 3.2; no message format changed since v1). Source: `docs/CONTEXT.md` Section 6, plus decisions D2–D6, D8 and D9 of `docs/MASTER_PLAN.md`.
 Code that publishes or consumes these messages must match this file. To change an interface, change this file **in the same commit** and say so in the commit message.
 The Python implementation is `aurora_common/` (`schemas.py`, `topics.py`, `bus.py`); `tests/test_schemas.py` validates every example below.
 
@@ -163,10 +163,22 @@ The envelope (`id`, `sat`, `origin`, `cmd`) is validated strictly. **`args` that
 |---|---|---|
 | `sat` | id or `null` | `null` for system-wide events |
 | `level` | `info` \| `warning` \| `alarm` | severity |
-| `kind` | `startup` \| `forecast` \| `monitor` \| `decision` \| `gated` \| `budget` \| `heal` \| `ingest` \| `clock` | what produced it |
+| `kind` | `startup` \| `forecast` \| `monitor` \| `decision` \| `gated` \| `budget` \| `heal` \| `ingest` \| `clock` \| `incident` | what produced it (`incident`: v1.3, see below) |
 | `text` | string | the human-readable line (dashboard event log) |
 | `sparta` | list of strings, optional | SPARTA technique / countermeasure ids |
 | `data` | object, optional | machine-readable details |
+
+**`kind: incident` (v1.3).** The core's incident correlator publishes the attack chain it assembled from observed evidence only (telecommand origins, monitor hits, forecasts, its own actions; never `gt/` or `redteam/`). One message per update of an incident, with the whole chain; a receiver keeps the latest per `incident_id`. `sat` is the source (C1) or the first satellite; `sparta` is the union of the steps' ids. `data`:
+
+| Field | Meaning |
+|---|---|
+| `event` | `"incident"` |
+| `incident_id` | stable id, e.g. `INC-003-A` |
+| `status` | `open` \| `contained` (every harmed satellite and the source acted on) \| `closed` (healed and quiet) |
+| `opened_t`, `first_evidence_t`, `assembly_delay_s` | when the incident opened, its earliest observed step, and the difference |
+| `source`, `victims`, `sats` | the relaying satellite and the satellites it reached (C1); every satellite in the incident |
+| `victims_touched_before_source_contained` | victims that received a relayed command before the source was acted on (`null` until then) |
+| `steps` | ordered list of `{t, sat, kind, text, sparta: [{id, tactic}], evidence, observed}`; `kind` ∈ `command` \| `effect` \| `deception` \| `predicted` \| `action` \| `healed`. `predicted` steps (next affected subsystem, projected failure with its ETA) have `observed: false`: they are forecasts, refreshed as the forecast changes. SPARTA ids come from Section 7; the tactic is named from the id prefix |
 
 ### 3.8 Red team: `redteam/{id}` (D8)
 
@@ -257,6 +269,8 @@ Used in `core/event.sparta` and `core/action.reason`. Proposal P4 (`docs/INTERFA
 | reroute over feasible links | CM0070 Alternate Communications Paths |
 
 ## Changelog
+
+- **v1.3, 2026-10-13:** `core/event.kind` gains `incident` (the attack chain, Section 3.7). No other field or message changed. The trajectory forecaster's `next_sub` may now be filled by a rule from the engineering dependency graph (thermal → eps); `p_malicious` stays `null` for it.
 
 - **v1.2, 2026-10-11:** SAFE semantics (Section 3.2): in SAFE, `HEATER on` is refused from any origin, `SET_MODE` other than `NOMINAL`/`SAFE` is refused, and only `SET_MODE NOMINAL` exits SAFE. Semantics only; no message format changed.
 

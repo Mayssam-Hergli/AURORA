@@ -230,3 +230,38 @@ test("every action has a plain phrase (no raw action names on the main screen)",
   });
   for (const v of Object.values(ACTION_LABEL)) assert.doesNotMatch(v, /_/);
 });
+
+test("the chain shown is the open incident first, then contained, then a recently closed one", () => {
+  const store = createStore();
+  const inc = (t, id, status) => store.handle(`${P}/core/event`, JSON.stringify({
+    v: 1, t, sat: "B", level: "alarm", kind: "incident", text: "x",
+    data: { event: "incident", incident_id: id, status, sats: ["B"], victims: [], source: null, steps: [] },
+  }));
+  assert.equal(store.activeIncident(), null);
+  inc(100, "INC-001-B", "closed");
+  assert.equal(store.activeIncident().incident_id, "INC-001-B");
+  inc(110, "INC-002-E", "contained");
+  inc(120, "INC-003-A", "open");
+  assert.equal(store.activeIncident().incident_id, "INC-003-A");
+  inc(130, "INC-003-A", "closed");
+  assert.equal(store.activeIncident().incident_id, "INC-002-E");
+  store.latestT = 2000; // long after: closed incidents drop out
+  inc(2000, "INC-002-E", "closed");
+  assert.equal(store.activeIncident().incident_id, "INC-002-E");
+  store.latestT = 3000;
+  assert.equal(store.activeIncident(), null);
+  assert.equal(store.timeline.length, 0); // incidents are not narrated twice
+});
+
+test("a confirmed chain outranks a newer suspected one; dismissed incidents are never shown", () => {
+  const store = createStore();
+  const inc = (t, id, status, extra) => store.handle(`${P}/core/event`, JSON.stringify({
+    v: 1, t, sat: "E", level: "alarm", kind: "incident", text: "x",
+    data: Object.assign({ event: "incident", incident_id: id, status, sats: ["E"], victims: [], source: null, steps: [] }, extra),
+  }));
+  inc(100, "INC-001-E", "contained", { confirmed: true });
+  inc(120, "INC-002-H", "open", { confirmed: false });
+  assert.equal(store.activeIncident().incident_id, "INC-001-E");
+  inc(130, "INC-003-J", "closed", { confirmed: false, dismissed: true });
+  assert.equal(store.activeIncident().incident_id, "INC-001-E");
+});

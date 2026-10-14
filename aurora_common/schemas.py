@@ -245,7 +245,9 @@ class Event(_Msg):
     t: float
     sat: SatId | None = None
     level: Literal["info", "warning", "alarm"]
-    kind: Literal["startup", "forecast", "monitor", "decision", "gated", "budget", "heal", "ingest", "clock"]
+    kind: Literal[
+        "startup", "forecast", "monitor", "decision", "gated", "budget", "heal", "ingest", "clock", "incident"
+    ]
     text: str
     sparta: list[str] | None = None
     data: dict[str, Any] | None = None

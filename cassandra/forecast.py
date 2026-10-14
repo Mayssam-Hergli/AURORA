@@ -175,7 +175,15 @@ class Trajectory:
             if driver is None or eta < driver.eta_s:
                 driver = Driver(name, value, limit, rate * sign, eta)
             best_p = {h: max(best_p[h], p[h]) for h in HORIZONS}
-        return ForecastResult(sat, tick.t, model, best_p, driver=driver, estimated=estimated)
+        # Rule-based next affected subsystem from the engineering dependency graph (ml/graph.py E_ENG):
+        # a channel heading for its limit loads its neighbour (heater -> battery). Not learned; the
+        # trajectory forecaster still says nothing about maliciousness (p_malicious stays null).
+        nxt = RULE_NEXT.get(driver.channel) if driver is not None and not math.isinf(driver.eta_s) else None
+        return ForecastResult(sat, tick.t, model, best_p, next_sub=nxt, driver=driver, estimated=estimated)
+
+
+# engineering dependency graph (ml/graph.py E_ENG), first neighbour of the driving channel's subsystem
+RULE_NEXT = {"temp_c": "eps", "soc_pct": "thermal", "att_err_deg": "eps"}
 
 
 # ----------------------------------------------------------------------------- learned ensemble

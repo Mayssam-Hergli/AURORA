@@ -46,9 +46,10 @@ def test_forecast_message_is_honest_about_what_trajectory_does_not_know():
     S.parse(T.forecast("B"), S.dump(msg))
     out = json.loads(S.dump(msg))
     assert out["model"] == "trajectory-v0"
-    assert (
-        out["q"] is None and out["p_std"] is None and out["next_sub"] is None and out["p_malicious"] is None
-    )
+    # no ensemble: no uncertainty and no maliciousness estimate (null, never 0). next_sub is filled by a
+    # rule from the engineering dependency graph (heating -> power), not learned (13 Oct)
+    assert out["q"] is None and out["p_std"] is None and out["p_malicious"] is None
+    assert out["next_sub"] == "eps"
     p = [out["p_fail"][h] for h in ("10", "30", "60", "120")]
     assert p == sorted(p) and p[-1] > 0
 

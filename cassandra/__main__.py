@@ -23,6 +23,7 @@ from aurora_common.bus import Bus
 from cassandra import config, explain
 from cassandra.act import Outbox, Responder
 from cassandra.forecast import ROOT, ForecastStage
+from cassandra.incident import Correlator
 from cassandra.ingest import Ingest
 from cassandra.monitor import Monitor
 from cassandra.sandbox import Sandbox
@@ -40,6 +41,7 @@ class Core:
         self.forecast = ForecastStage.build(self.profiles, cfg)
         self.sandbox = Sandbox(self.profiles, cfg)
         self.responder = Responder(self.profiles, cfg, self.sandbox, act_tau=self._ensemble_tau())
+        self.incidents = Correlator(cfg)
         self.latency_ms: list[float] = []
         self.plan_ms: list[float] = []
 
@@ -68,6 +70,7 @@ class Core:
         events = self.monitor.step(tick)
         forecasts = self.forecast.step(tick, self.monitor.untrusted)
         out = self.responder.step(tick, forecasts, events, self.monitor.untrusted)
+        out.events += self.incidents.step(tick, events, forecasts, out)  # the attack chain (kind incident)
         now = tick.t + 1.0
         out.events = [explain.note(now, n) for n in tick.notes] + out.events
         self.latency_ms.append((time.perf_counter() - t0) * 1000)
