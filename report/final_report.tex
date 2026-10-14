@@ -29,8 +29,7 @@
 
 \begin{document}
 
-\title{CASSANDRA: Forecasting Mission Failure Before It Happens --\\
-A Physics-Constrained, Twin-in-the-Loop Cyber Defence\\for a Hybrid Satellite Constellation Testbed}
+\title{CASSANDRA: A Student Prototype for Forecasting\\Attack-Induced Failures on a Simulated Satellite Constellation}
 
 \author{
 \IEEEauthorblockN{Mayssam Hergli, Youssef Mhamdi, Rami Troudi, Eya Jendoubi, Youssef Atig}
@@ -43,24 +42,22 @@ IASTAM 6.0 Technical Challenge --- Track 5 (Cybersecurity), Problem 10:\\
 
 % -----------------------------------------------------------------------------------------------------
 \begin{abstract}
-Attacks on space systems unfold in stages: a malicious telecommand or a compromised neighbour drives a
-satellite towards a physical failure long before any single-parameter limit trips. We present
-CASSANDRA, a predictive defence that asks \emph{how long remains until mission failure} and responds
-before it. CASSANDRA ingests telemetry, telecommand provenance and inter-satellite link state;
-forecasts the probability of reaching a critical state within 10--120\,s with a calibrated
-five-member temporal graph network whose messages may only travel along engineering, threat and
-feasible-link relations; checks cross-channel physical consistency to expose masked telemetry; and
-chooses the least disruptive response by rolling candidate actions forward on a shadow digital twin
-under an explicit cost $\Jcost(a)$, guarded by an uncertainty gate and an isolation budget. It runs on
-AURORA, a 12-satellite testbed in which a digital twin and a physical ESP8266 node speak the same MQTT
-contract. On held-out out-of-distribution synthetic scenarios, at a 0.1\,\% false-positive rate, the
-forecaster warned of all 113 failures (95\,\% Wilson interval 96.7--100\,\%) with a median lead of
-135\,s, against 56\,s for a static threshold and 23\,s for trajectory extrapolation; ensemble inference
-takes 17.6\,ms per tick on a laptop CPU. In closed loop, 13 of 18 failures were averted (an upper
-bound: the planner uses the simulator as its model). Heater-latch, telemetry-masking and cross-link
-propagation attacks were contained before any limit in the recorded live runs, including an attack on
-the physical node (firmware-emulated temperature) stopped at 54.4\,\degC{} against a 60\,\degC{}
-limit. All results are simulated or emulated; we report the limits, including a saturated benchmark.
+Attacks on space systems often unfold in stages: a malicious telecommand or a compromised neighbour
+drives a satellite towards a physical failure before any single-parameter limit trips. We built
+CASSANDRA, a prototype defence that tries to estimate \emph{how long remains until a failure} and to
+respond before it, and tested it on AURORA, a small testbed in which a simulated 12-satellite
+constellation and one ESP8266 board exchange the same MQTT messages. CASSANDRA combines a calibrated
+ensemble of temporal graph networks that forecasts the probability of reaching a critical state within
+10--120\,s, a consistency check between telemetry channels to expose masked readings, and a response
+planner that tries candidate actions on a copy of the simulator before acting, with an uncertainty gate
+and an isolation budget. On synthetic test scenarios from held-out generator settings, at a 0.1\,\%
+false-positive rate, the forecaster warned of all 113 failures with a median lead of 135\,s, against
+56\,s for a static threshold; however, simpler variants of our model reach the same detection rate, so
+this synthetic benchmark is too easy to show what the graph structure adds. In closed loop, 13 of 18
+failures were averted, an optimistic figure because the planner uses the simulator itself. In 21 scripted
+live runs, including one on the physical board (whose temperature is computed by its firmware), no
+satellite reached its limit. These are simulation and emulation results from a student prototype, not
+flight evidence; we list what remains to be shown.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -83,9 +80,9 @@ physical damage is under way.
 Problem~10 of the IASTAM~6.0 Technical Challenge asks for a mechanism that detects malicious or
 abnormal behaviour across commands, telemetry, network activity and software behaviour \emph{without
 interrupting the mission}, evaluated on detection rate, false positives, detection time, robustness and
-availability impact. Our answer replaces the question ``is this value abnormal now?'' with ``where is
-this attack going, and how long until the mission fails?'', and acts before the critical point with the
-least disruptive response. The defence loop has six stages: \emph{Observe, Understand, Forecast,
+availability impact. Our prototype tries to complement the question ``is this value abnormal now?''
+with ``where is this attack going, and how long until the mission fails?'', and to act before the
+critical point with the least disruptive response it can find. The defence loop has six stages: \emph{Observe, Understand, Forecast,
 Simulate, Act, Verify}.
 
 \subsection{System model}
@@ -153,18 +150,19 @@ at 1\,Hz (Sec.~\ref{sec:impl}).
 isolate healthy satellites, so autonomous isolation is limited (Sec.~\ref{sec:safety}).
 \end{itemize}
 
-\subsection{Contributions}
+\subsection{What we built}
+Within the eight-day build phase of the challenge, we:
 \begin{enumerate}
-\item A calibrated, physics-constrained temporal graph forecaster of time-to-failure with an explicit
-0.1\,\% false-positive operating point and an ensemble uncertainty used by a safety gate.
-\item A twin-in-the-loop response planner that scores candidate actions with
-$\Jcost(a)$ on a shadow model that never sees the attacker's queued commands.
-\item A cross-channel consistency monitor, bounded by the design thermal model, that exposes masked
-telemetry.
-\item AURORA, a hybrid hardware/digital-twin testbed with a frozen message contract, ground-truth
-isolation enforced by tests, and an evaluation protocol that reports pre-onset false alarms and labels
-upper bounds.
+\item trained a small ensemble of temporal graph networks that forecasts the probability of failure
+per horizon, calibrated to a fixed 0.1\,\% false-positive operating point;
+\item wrote a response planner that compares a few candidate actions on a copy of the simulator
+before acting, with simple safety rules against self-inflicted outages;
+\item added a consistency check between telemetry channels to catch masked readings;
+\item assembled a testbed (simulator, one physical board, message bus, dashboard) and an evaluation
+script that also counts false alarms raised before an attack starts.
 \end{enumerate}
+None of these components is new on its own; our work is in putting them together and measuring the
+result honestly on a small, mostly simulated setup.
 
 % =====================================================================================================
 \section{Related Work}
@@ -195,12 +193,13 @@ and deep ensembles~\cite{lakshminarayanan2017ensembles} provide calibration and 
 \textbf{Testbeds.} Satellite security testbeds such as AegisSat~\cite{aegissat} and
 MimicSat~\cite{mimicsat} emulate the flight software or the cyber-physical plant.
 
-\textbf{Gap and our added value.} We found no system that (i) forecasts a calibrated probability of
-mission failure per horizon from cyber and physical evidence together, (ii) restricts learning to
-physically permitted propagation paths, (iii) selects a response by counterfactual simulation under
-explicit anti-self-DoS gates, and (iv) is evaluated with a fixed false-positive operating point,
-held-out generator families and closed-loop availability. CASSANDRA addresses all four, and its
-evaluation reports where the evidence is still weak (Sec.~\ref{sec:feas}).
+\textbf{Where our prototype sits.} Most of the work above detects anomalies; fewer works try to
+estimate the time left before a mission-level failure and to choose a response from that estimate. We
+explored that direction: forecasting a calibrated failure probability from cyber and physical evidence
+together, limiting the model to physically plausible propagation paths, and choosing a response by
+simulation under simple safety rules. We did not compare against these methods on their own
+benchmarks, and our evaluation is far smaller than theirs; Sec.~\ref{sec:feas} lists what it does
+not show.
 
 % =====================================================================================================
 \section{System Architecture and Technical Specifications}
@@ -670,8 +669,10 @@ isolation, the review fixes and broker integration.
 \label{sec:results}
 
 \subsection{Detection and lead time}
-Table~\ref{tab:detect} compares all methods. At the 0.1\,\% false-positive operating point the ensemble
-warns of every failing satellite on all three test splits, with median leads of 133--158\,s. On
+Table~\ref{tab:detect} compares all methods on synthetic test episodes. At the 0.1\,\% false-positive
+operating point the ensemble warned of every failing satellite on all three splits, with median leads
+of 133--158\,s; as discussed in Sec.~\ref{sec:feas}, most of our own ablations do the same, so these
+splits are easier than real operations. On
 \texttt{test\_ood} it warned of all 113 failures (Wilson 96.7--100\,\%), median lead 135\,s (IQR
 111--195\,s; bootstrap 127--163\,s), with a realised false-positive rate of 0.084\,\%, 0.33 pre-onset
 false alarms per satellite-hour and AUROC 0.997. Static thresholds warn later (49--84\,s) and miss more;
@@ -737,8 +738,9 @@ satellite-hour.}
 
 \textbf{Two operating points.} The headline uses the alert level $\tau$; the core acts later, at
 $\bar p(t,60)\ge 0.5$. Scored at that action threshold the ensemble's recall is 0.73--0.89 with a 36--40\,s
-lead (Table~\ref{tab:detect}, second row): CASSANDRA \emph{warns} more than two minutes ahead and
-\emph{acts} about half a minute ahead, by design, to avoid acting on low-probability alerts.
+lead (Table~\ref{tab:detect}, second row): in these simulations CASSANDRA \emph{warns} about two
+minutes ahead but \emph{acts} only about half a minute ahead, by design, to avoid acting on
+low-probability alerts.
 
 \textbf{Per attack type.} Fig.~\ref{fig:bytype} breaks the in-distribution lead down by attack type
 (183 failing satellites in 140 attack episodes, recall 1.00 for every type). Slow mechanisms (A3 power
@@ -855,8 +857,9 @@ Table~\ref{tab:live} summarises the live runs (attack at $t=60$\,s; times are se
 twin limit 45\,\degC). No satellite reached its limit in the runs of the final configuration and no
 non-attacked satellite was contained. For A1, $\Jcost$ chooses to cut the heater and keep the satellite
 in service (``contains'', not ``quarantines''); repeated commands escalate to safe mode, which refuses
-them. The cost term for future relay victims made C1 source containment systematic: from 5 to 6 sources
-of 6, from 10 to 6 victims touched, and a median time to contain of 12\,s instead of 57\,s.
+them. Adding a cost term for future relay victims improved C1 containment in our six seeds: from 5 to 6
+sources contained, from 10 to 6 victims touched, and a median time to contain of 12\,s instead of
+57\,s. With six runs per configuration, these are indications rather than statistics.
 
 \begin{table*}[t]
 \caption{Live scenarios, CASSANDRA in closed loop with the twin (simulated) and with the ESP8266 node.
@@ -931,8 +934,9 @@ temperature emulated by the firmware.}
 The incident correlator built a chain in every live run (\file{results/incident\_metrics.json}): A1
 3/3 (assembly delay 22, 52, 197\,s after the first observed evidence, i.e.\ the forecaster's warning
 time after a legitimate-looking command), B1 3/3 with the deception step (8\,s, the monitor's
-confirmation window) and C1 6/6 (0\,s, one victim touched before containment in each run). Two
-unattended rehearsals of the full demonstration (\file{results/rehearsal.json}) met every milestone:
+confirmation window) and C1 6/6 (0\,s, one victim touched before containment in each run). Both of
+the two recorded unattended rehearsals of the demonstration (\file{results/rehearsal.json}) reached
+their planned milestones:
 node A1 flagged at 5.4--6.1\,s and cut at 21.4--22.1\,s; re-asserted A1 in safe mode at 21.4--22.3\,s;
 B1 at 10$\times$ speed caught at 2.9--3.0\,s and contained at 12.6--12.9\,s; C1 source quarantined at
 5.7--6.7\,s.
@@ -1034,20 +1038,19 @@ destructive command without precursor.
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
 
-CASSANDRA forecasts mission failure instead of scoring anomalies and acts on the forecast with the least
-disruptive response that a shadow twin predicts will work. On held-out synthetic scenarios it warned of
-every failure more than two minutes ahead at a 0.1\,\% false-positive rate, averted most failures in
-closed loop (upper bound), and contained every live attack we ran, including one on a physical node,
-before its limit. The prototype is complete: a frozen message contract, a live 12-satellite twin, a
-physical node, the defence core with an incident correlator, an operator dashboard and a reproducible
-evaluation pipeline.
+CASSANDRA is a working prototype of one idea: estimate how long remains before a failure and act on that
+estimate with a mild response first. In our synthetic tests it warned of the failures about two minutes
+ahead at a 0.1\,\% false-positive rate, the closed loop averted 13 of 18 failures (an optimistic upper
+bound), and in 21 scripted live runs, one of them on a physical board, no satellite reached its limit.
+The pieces run together end to end: a message contract, a simulated 12-satellite constellation, one
+physical node, the defence core, a dashboard and an evaluation pipeline.
 
-The evidence is limited by synthetic data, a saturated benchmark and a closed loop that plans with the
-simulator itself. Next steps, in order: a harder generator to measure what the graph and the cyber
-features contribute; lead-time results on SCAD and false-alarm rates on ESA-ADB; latency and energy on
-the Raspberry~Pi and an ARM on-board target; ESP32 nodes with real temperature and current sensors and
-radio inter-satellite links; and a planner whose model is learned from telemetry rather than taken from
-the simulator.
+These results do not yet show that the approach works on real satellites. The data are synthetic and too
+easy to separate the contribution of each component; the live runs are few (3--6 per scenario); the
+closed loop plans with the simulator itself; and the only hardware is one board whose temperature is
+computed by its firmware. Realistic next steps are a harder synthetic generator, false-alarm rates on
+real telemetry (ESA-ADB), latency measured on the Raspberry~Pi, and nodes with real temperature
+sensors.
 
 \section*{Acknowledgment}
 The authors thank the organisers and reviewers of the IASTAM~6.0 Technical Challenge.

@@ -68,16 +68,23 @@
 \maketitle
 
 \begin{abstract}
-\noindent This document evaluates CASSANDRA, our predictive cyber defence, against the indicators of
-Track~5: attack detection rate, false-positive rate, detection time and anticipation horizon, and
-impact on system availability, together with robustness and latency. All numbers are read from result
-files produced by code in the repository (listed in the source header) and are simulation or emulated
-hardware results. Headline: on held-out out-of-distribution scenarios, at a 0.1\,\% false-positive
-rate, the forecaster warned of all 113 failures (95\,\% Wilson interval 96.7--100\,\%) with a median
-anticipation horizon of 135\,s (bootstrap 95\,\% interval 127--163\,s); in 21 live runs with the
-defence in the loop (18 attacks, 3 clean) no satellite reached its critical limit and no healthy
-satellite was contained.
+\noindent This document evaluates CASSANDRA, our student prototype of a predictive cyber defence,
+against the indicators of Track~5: attack detection rate, false-positive rate, detection time and
+anticipation horizon, and impact on system availability, together with robustness and latency. All
+numbers are read from result files produced by code in the repository (listed in the source header);
+they come from simulation and from one board with an emulated temperature. On synthetic scenarios from
+held-out generator settings, at a 0.1\,\% false-positive rate, the forecaster warned of all 113 failures
+(95\,\% Wilson interval 96.7--100\,\%) with a median lead of 135\,s; simpler variants of the model do
+as well, so this benchmark is too easy to rank design choices. In 21 scripted live runs (18 attacks,
+3 clean) no satellite reached its critical limit and no healthy satellite was contained, a small sample.
 \end{abstract}
+
+\paragraph{How to read these numbers.} The training and test data are synthetic; one test split adds
+real noise from OPS-SAT. The live results come from 3 to 6 runs per scenario on one laptop. The
+closed-loop figures are optimistic because the planner uses the same simulator as the plant. The only
+hardware is one ESP8266 board whose temperature is computed by its firmware. Nothing here is a flight or
+space-qualified measurement, and several conditions of the problem statement (loss of communication,
+energy, the target ground-station hardware) were not measured.
 
 % =====================================================================================================
 \section{Evaluation Methodology and Benchmark Setup}
@@ -239,8 +246,9 @@ AUROC of $\bar p(t,60\,\mathrm{s})$ & 0.9992 & 0.9967 & 0.9993 \\
 
 \subsection{Comparison with baselines}
 Tables~\ref{tab:recall-lead} and~\ref{tab:fpr-auroc} compare every method; Figs.~\ref{fig:recall-bars}
-and~\ref{fig:lead-iqr} plot the main ones. At the same false-positive target, CASSANDRA is the only method
-that detects every failure on all three splits, and it does so with leads of more than two minutes.
+and~\ref{fig:lead-iqr} plot the main ones. At the same false-positive target, the ensemble detected every
+failing satellite on the three synthetic splits with leads of about two minutes; none of the four
+baselines did, but most of our own ablations did (Table~\ref{tab:ablation}).
 The static threshold warns about a minute ahead and loses 30 points of recall under real noise; the
 trajectory forecaster warns only about 20\,s ahead. The LSTM autoencoder and GDN show long leads only
 on the minority of failures they detect, and GDN's pre-onset false-alarm rate is 16 to 25 times the
@@ -657,9 +665,9 @@ Failing satellites & 28 & 31 & 16 & 15 & 14 & 79 & 183 \\
 \end{table}
 
 Removing or spoofing the command evidence changes the lead by at most 6\,s (Table~\ref{tab:stress}):
-on this benchmark the physical channels alone are enough to detect every failure. This makes the system
-robust to an attacker who hides the command channel, but it also means the benchmark cannot show what
-the cyber features add (Section~\ref{sec:ablation}).
+on this benchmark the physical channels alone are enough to detect every failure. Hiding the command
+channel therefore did not hurt detection here, but the benchmark also cannot show what the cyber
+features add (Section~\ref{sec:ablation}).
 
 % =====================================================================================================
 \section{Trade-off and Ablation Study}
@@ -761,14 +769,14 @@ versus \file{results/phase6\_block3.json}).}
 \label{fig:c1}
 \end{figure}
 
-\subsection{Where the approach succeeds and where trade-offs remain}
+\subsection{What worked in our tests, and what did not}
 \begin{itemize}
-\item \textbf{Succeeds.} Early warning with a controlled false-positive rate on unseen generator
-families and real noise; calibrated probabilities; masking exposed within the monitor window; safe
-mode that defeats re-asserted commands without knowing they are malicious; containment of a
-propagating attack at its source; no false containment and no limit reached in 21 live runs (18
-attacks, 3 clean); per-tick
-latency well inside the budget.
+\item \textbf{Worked in our tests.} Early warnings at a fixed false-positive rate on the synthetic
+splits, including the held-out and real-noise ones; well-calibrated probabilities; the masking check
+caught all 6 B1 runs within its 8\,s window; safe mode stopped re-asserted commands without needing
+to know they were malicious; the C1 source was quarantined in all 6 runs of the final configuration;
+no false containment and no limit reached in the 21 live runs (18 attacks, 3 clean); per-tick latency
+of 28--36\,ms on the laptop. Each of these rests on a small number of runs.
 \item \textbf{Trade-offs.} Acting late enough to avoid false responses costs anticipation (about 36--40\,s
 of lead at the action threshold instead of 133--158\,s). The node rule trades margin (5.6\,\degC) for a
 visible climb. The ensemble costs five forward passes for an uncertainty estimate. Quarantined C1
