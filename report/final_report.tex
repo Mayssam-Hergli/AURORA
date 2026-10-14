@@ -111,6 +111,7 @@ when responses are disabled.
 \caption{Critical-state limits per satellite kind (\file{docs/interfaces.md}, Sec.~5).}
 \label{tab:limits}
 \centering
+\footnotesize
 \begin{tabular}{@{}lccc@{}}
 \toprule
 Satellite kind & $T^{\max}$ & $\mathrm{SOC}^{\min}$ & $\theta^{\max}$ \\
@@ -527,15 +528,21 @@ $W_t \leftarrow$ \textsc{Ingest} (hold $\le$3\,s, seq and provenance checks)\;
 \label{tab:params}
 \centering
 \footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lr@{}}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{42mm}>{\raggedright\arraybackslash}p{40mm}@{}}
 \toprule
 Parameter & Value \\
 \midrule
 Weights $(w_r, w_m, w_c, w_q)$ & (1.0, 0.5, 0.3, 0.5) \\
-Cost $C$: none / block / safe / isolate / quarantine & 0 / 0.1 / 0.2 / 0.25 / 0.4 \\
-Rollout / risk horizon & 60\,s / 120\,s \\
-Flag / plan / calm thresholds, $\bar p(t,60)$ & $\tau$ (0.30 traj.) / 0.50 / 0.10 \\
+Cost $C$ of none / block source & 0 / 0.1 \\
+Cost $C$ of safe mode / isolate & 0.2 / 0.25 \\
+Cost $C$ of quarantine & 0.4 \\
+Rollout horizon & 60\,s \\
+Risk horizon & 120\,s \\
+Flag threshold on $\bar p(t,60)$ & $\tau$ (0.30 for trajectory) \\
+Plan threshold on $\bar p(t,60)$ & 0.50 \\
+Calm threshold on $\bar p(t,60)$ & 0.10 \\
 Physical node rule & $\hat p(t,30)\ge 0.85$ \\
 Uncertainty gate $\theta$ on $Q$ & 0.35 \\
 Isolation budget per orbital window & 25\,\% \\
@@ -612,16 +619,27 @@ OPS-SAT-AD~\cite{opssatad}.
 \centering
 \footnotesize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lr@{}}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{42mm}>{\raggedright\arraybackslash}p{40mm}@{}}
 \toprule
-Train / validation episodes & 800 / 200 \\
-Test: in-distribution / out-of-distribution / real noise & 300 / 300 / 200 \\
-Window, horizons & 30\,s; 10, 30, 60, 120\,s \\
-Hidden size, message-passing rounds & 32, 3 \\
-Parameters per member (\file{docs/ML\_GUIDE.md}) & 42.7\,k \\
-Ensemble seeds; epochs; learning rate & 0--4; 8; $2\times10^{-3}$ \\
-Ablations & no eng.\ features, unconstrained, no residual \\
-Wall time: train / evaluate & 21\,min / 19\,min \\
+Item & Value \\
+\midrule
+Training episodes & 800 \\
+Validation episodes & 200 \\
+Test episodes: in-distribution & 300 \\
+Test episodes: out-of-distribution & 300 \\
+Test episodes: real noise (OPS-SAT) & 200 \\
+Input window & 30\,s \\
+Forecast horizons & 10, 30, 60, 120\,s \\
+Hidden size & 32 \\
+Message-passing rounds & 3 \\
+Parameters per member & 42.7\,k (\file{docs/ML\_GUIDE.md}) \\
+Ensemble seeds & 0, 1, 2, 3, 4 \\
+Epochs & 8 \\
+Learning rate & $2\times10^{-3}$ \\
+Ablations & no engineered features; unconstrained graph; no residual \\
+Training wall time & 21\,min \\
+Evaluation wall time & 19\,min \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -756,13 +774,16 @@ horizon on all three splits. The next affected subsystem is predicted well on sy
 \caption{Secondary heads (\file{docs/NUMBERS.md}, \file{results/eval/metrics.json}).}
 \label{tab:heads}
 \centering
+\footnotesize
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lccc@{}}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{40mm}ccc@{}}
 \toprule
 Metric & ID & OOD & Real \\
 \midrule
-ECE, all horizons & $\le$0.005 & $\le$0.005 & $\le$0.005 \\
-\quad ID at 10/30/60/120\,s & \multicolumn{3}{l}{0.0007 / 0.0011 / 0.0021 / 0.0034} \\
+ECE, worst horizon & $\le$0.005 & $\le$0.005 & $\le$0.005 \\
+ECE at 10\,s / 30\,s & 0.0007 / 0.0011 & --- & --- \\
+ECE at 60\,s / 120\,s & 0.0021 / 0.0034 & --- & --- \\
 Next subsystem, top-1 & 0.86 & 0.83 & 0.24 \\
 Next subsystem, top-3 & 1.00 & 0.99 & 0.82 \\
 Malicious vs fault, AUROC & 0.95 & 0.94 & 0.94 \\
@@ -813,8 +834,12 @@ delete commands by their hidden attack label; the fix removed that oracle.
 \label{tab:closed}
 \centering
 \footnotesize
-\begin{tabular}{@{}lr@{}}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{42mm}>{\raggedright\arraybackslash}p{40mm}@{}}
 \toprule
+Metric & Value \\
+\midrule
 Failures averted & 13 / 18 (72.2\,\%; Wilson 49.1--87.5\,\%) \\
 New failures caused by a response & 0 \\
 Mean availability & 0.9989 \\
@@ -923,11 +948,14 @@ the Raspberry~Pi target has not been measured.
 \label{tab:latency}
 \centering
 \footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lr@{}}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{56mm}>{\raggedright\arraybackslash}p{26mm}@{}}
 \toprule
+Measurement & Time \\
+\midrule
 Ensemble inference, 5 models, 1 thread (median / p95) & 17.6 / 20.9\,ms \\
-\quad same, three runs under varying load (median) & 17.6--34.1\,ms \\
+Same, three runs under varying load (median) & 17.6--34.1\,ms \\
 Ensemble inference, 4 threads (median / p95) & 21.9 / 40.0\,ms \\
 Core tick, live runs (median) & 28--36\,ms \\
 Live planning per decision (median) & 61--89\,ms \\
