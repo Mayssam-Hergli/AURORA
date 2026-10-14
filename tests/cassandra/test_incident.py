@@ -129,3 +129,21 @@ def test_a_risk_flag_that_calms_down_is_dismissed_not_left_open():
     for e in chains(lp).values():
         if "E" in e.data["sats"] and not e.data["confirmed"]:
             assert e.data["status"] == "closed" and e.data["dismissed"]
+
+
+def test_c1_chain_is_complete_ordered_and_every_step_has_text():
+    """With the fix (source quarantined quickly): relay -> victim command (collapsed) -> effect -> source
+    quarantined (with its time); steps in time order; no empty step (seen empty on the dashboard, 14 Oct)."""
+    lp = Loop(seed=2, duration_s=900).run(60)
+    redteam(lp, "D", "relay_tc", {"cmd": "HEATER", "args": {"on": True}, "period_s": 10.0, "delay_s": 2.0})
+    lp.run(400)
+    (inc,) = [e for e in chains(lp).values() if e.data["source"] == "D"]
+    steps = inc.data["steps"]
+    assert all(s["text"].strip() for s in steps)
+    assert [s["t"] for s in steps] == sorted(s["t"] for s in steps)
+    for v in inc.data["victims"]:
+        cmds = [s for s in steps if s["sat"] == v and s["kind"] == "command"]
+        assert len(cmds) == 1, cmds  # every relayed copy to one victim is one step
+        assert any(s["sat"] == v and s["kind"] == "effect" for s in steps), v
+    act = [s for s in steps if s["sat"] == "D" and s["kind"] == "action"]
+    assert act and "quarantined" in act[0]["text"] and "links cut" in act[0]["text"] and act[0]["t"] > 0

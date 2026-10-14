@@ -88,12 +88,15 @@ Note: the rehearsals ran **on battery** (laptop unplugged at the time) and still
 
 - **Battery:** on battery the CPU is throttled; the core can fall behind a 10× plant. Plug in.
 - **Brief false flags:** the ensemble flags at a low alert level (τ ≈ 0.015), so a healthy satellite is sometimes flagged for a few seconds (no action). On the dashboard they never become an attack chain (suspected incidents are dismissed).
-- **Heater-consistency rule near equilibrium:** a heater warming very slowly can be flagged as inconsistent; the core then estimates the temperature (conservative). Seen once as an extra "deception" step on a C1 victim.
+- **Heater-consistency rule near equilibrium:** a heater warming very slowly can be flagged as inconsistent; the core then estimates the temperature (conservative). Seen twice as an extra "deception" step on a C1 victim (F); not fixed (code freeze).
 - **Repeated A1 on the same satellite within ~5 min** is read as a continuing attack (escalation to safe mode). For a clean A1 on stage, reset with `attack-stop` and wait, or restart the demo.
 - **Board:** temperature computed by the firmware (no sensor); ISL cuts on the board are logical; one board only.
 - **Benchmark saturation:** every ablation reaches recall 1.00 on the synthetic sets; the graph's benefit is not shown.
 
 ## 8. Gotchas
+
+- Between demo runs use `make stage-reset` (all attacks released, all satellites ground-cleared, broker restarted, dashboard session cleared). After it, satellites read "no anomaly reported" until the core publishes a new state.
+- Never run `make test` while a demo stack is up: the live core on the same broker makes the A1 integration tests fail.
 
 - WSL shuts down when no WSL program runs, and the broker with it ("connection refused" on Windows): keep one WSL terminal running.
 - Use `VENV=$HOME/aurora-venv`: the repo's `.venv` on /mnt/c imports torch in ~90 s.

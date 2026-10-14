@@ -1,5 +1,6 @@
 # Bus, CASSANDRA core, attacks, demo, board (owner: Mayssam Hergli). Included by the top-level Makefile.
 #   make up / down / reset          Mosquitto on 1883 (MQTT) + 9001 (WebSockets)
+#   make stage-reset                between demo runs: attacks released, satellites nominal, dashboard clean
 #   make tail [TAIL_ARGS=...]       watch the bus, e.g. make tail TAIL_ARGS="--rate"
 #   make bus-check                  publish one sample message and confirm it comes back
 #   make twin-replay [SATS=A-L]     alias of `make twin` (twin/service.py, mk/twin.mk)
@@ -24,7 +25,7 @@ SCENARIO ?= $(or $(firstword $(filter $(SCENARIOS),$(MAKECMDGOALS))),A1)
 TWIN = $(PY) -u -m twin.service --sats $(SATS) --speed $(SPEED) --seed $(SEED)
 CORE = $(PY) -u -m cassandra --twin-sats $(SATS)
 
-.PHONY: up down reset tail bus-check twin-replay core demo-sw demo-board-dry bridge-dry attack attack-stop $(SCENARIOS)
+.PHONY: up down reset stage-reset tail bus-check twin-replay core demo-sw demo-board-dry bridge-dry attack attack-stop $(SCENARIOS)
 
 up:
 	$(COMPOSE) up -d
@@ -38,6 +39,10 @@ down:
 reset:           ## restart clean: persistence is off, so retained states are gone too
 	$(COMPOSE) down
 	$(MAKE) up
+
+stage-reset:     ## between demo runs: release every attack, ground-clear every satellite, restart the broker
+	$(PY) scripts/stage_reset.py
+	$(MAKE) reset
 
 tail:
 	$(PY) ground/tools/mqtt_tail.py $(TAIL_ARGS)

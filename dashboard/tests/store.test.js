@@ -187,6 +187,7 @@ test("the strip follows the satellite at risk, else B; the countdown runs on mes
   assert.equal(store.atRisk("B"), "E"); // an abnormal state outranks a higher P
   store.handle(...ev(20, "E", "decision", { event: "state", from: "nominal", to: "flagged", trigger: "forecast", p: 0.3, eta_s: 40 }));
   fc("E", 30, 0.3);
+  store.handle(...tm("E", "thermal", 30, { temp_c: 30, heater_on: 1 })); // the clock follows live telemetry
   assert.equal(Math.round(store.etaLeft("E")), 30);
   store.handle(...ev(31, "E", "decision", { event: "decision", action: "isolate_subsystem", eta_s: 29 }));
   assert.equal(store.etaLeft("E"), null); // contained: no countdown
@@ -264,4 +265,53 @@ test("a confirmed chain outranks a newer suspected one; dismissed incidents are 
   assert.equal(store.activeIncident().incident_id, "INC-001-E");
   inc(130, "INC-003-J", "closed", { confirmed: false, dismissed: true });
   assert.equal(store.activeIncident().incident_id, "INC-001-E");
+});
+
+test("an incident not updated for 10 min leaves the main panel whatever its status (e.g. a held quarantine)", () => {
+  const store = createStore();
+  store.handle(`${P}/core/event`, JSON.stringify({ v: 1, t: 1000, sat: "D", level: "warning", kind: "incident", text: "x",
+    data: { event: "incident", incident_id: "INC-001-D", status: "contained", confirmed: true, sats: ["D", "F"], victims: ["F"], source: "D", steps: [] } }));
+  store.handle(...tm("A", "thermal", 1300, { temp_c: 20, heater_on: 0 }));
+  assert.equal(store.activeIncident().incident_id, "INC-001-D");
+  store.handle(...tm("A", "thermal", 1700, { temp_c: 20, heater_on: 0 }));
+  assert.equal(store.activeIncident(), null);
+  assert.ok(store.incidents["INC-001-D"]); // still listed on /detail
+});
+
+test("a new run that starts hours earlier resets the session clock; a core restart clears the session", () => {
+  const store = createStore();
+  store.handle(...tm("A", "thermal", 50000, { temp_c: 20, heater_on: 0 })); // a 10x run far ahead
+  store.handle(`${P}/core/event`, JSON.stringify({ v: 1, t: 50000, sat: "D", level: "warning", kind: "incident", text: "x",
+    data: { event: "incident", incident_id: "INC-001-D", status: "contained", confirmed: true, sats: ["D"], victims: [], source: null, steps: [] } }));
+  store.handle(...tm("A", "thermal", 1000, { temp_c: 20, heater_on: 0 })); // the next run, real time
+  assert.equal(store.latestT, 1000);
+  store.handle(`${P}/core/event`, JSON.stringify({ v: 1, t: 1001, level: "info", kind: "startup", text: "core started" }));
+  assert.deepEqual(store.incidents, {});
+  assert.equal(store.activeIncident(), null);
+});
+
+test("long chains keep the first step and the latest ones, the middle collapsed", () => {
+  const { chainView } = require("../store.js");
+  const steps = Array.from({ length: 12 }, (_, i) => ({ t: i, text: `s${i}` }));
+  const v = chainView(steps, 7);
+  assert.equal(v.length, 7);
+  assert.equal(v[0].step.text, "s0");
+  assert.equal(v[1].collapsed, 6);
+  assert.deepEqual(v.slice(2).map((x) => x.step.text), ["s7", "s8", "s9", "s10", "s11"]);
+  assert.equal(chainView(steps.slice(0, 5), 7).length, 5);
+});
+
+test("during C1 the quarantined source is red and its cut links are red dashed (cut)", () => {
+  const store = createStore();
+  store.handle(`${P}/sat/D/state`, JSON.stringify({ v: 1, sat: "D", t: 1, state: "quarantined" }));
+  store.handle(`${P}/link/D-F`, JSON.stringify({ v: 1, t: 1, a: "D", b: "F", feasible: true, enabled: false, range_km: 900 }));
+  assert.equal(store.toneOf("D"), "warning");
+  assert.equal(store.linkStatus("D", "F"), "cut");
+});
+
+test("telemetry without a core state reads 'no anomaly reported', not 'no data yet'", () => {
+  const store = createStore();
+  assert.equal(store.stateWord("B"), "no data yet");
+  store.handle(...tm("B", "thermal", 100, { temp_c: 21.5, heater_on: 0 }));
+  assert.equal(store.stateWord("B"), "no anomaly reported");
 });

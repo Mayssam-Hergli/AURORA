@@ -84,8 +84,19 @@
     }).join("");
   }
 
+  function renderIncidents() {
+    const all = Object.values(store.incidents).sort((a, b) => b.updated_t - a.updated_t);
+    $("incs").innerHTML = all.length
+      ? all.map((i) => `<tr><td>${esc(i.incident_id)}</td><td>${esc(i.dismissed ? "dismissed" : i.status)}</td>` +
+          `<td>${esc(i.sats.join(", "))}</td><td>${i.source ? esc(i.source) + " → " + esc(i.victims.join(", ")) : "–"}</td>` +
+          `<td class="num">${hhmmss(i.opened_t)}</td><td class="num">${hhmmss(i.updated_t)}</td>` +
+          `<td class="num">${i.steps.length}</td><td class="num">${fmt(i.assembly_delay_s, 0)} s</td></tr>`).join("")
+      : `<tr><td colspan="8">No incident this session.</td></tr>`;
+  }
+
   setInterval(() => {
-    $("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC";
+    renderIncidents();
+    $("clock").textContent = (store.latestT ? hhmmss(store.latestT) : new Date().toISOString().slice(11, 19)) + " UTC";
     renderTable();
     charts.forEach((c) => c());
     renderLinks();

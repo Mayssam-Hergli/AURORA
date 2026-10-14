@@ -170,11 +170,11 @@ h3 {
 }
 #sky .sat-label {
   fill: var(--ink);
-  font-size: 26px;
+  font-size: var(--letter, 28px);
   font-weight: 600;
 }
 #sky .sat-temp {
-  font-size: 28px;
+  font-size: var(--temp, 28px);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -216,7 +216,7 @@ h3 {
 #sky .tone-caution .sat-label,
 #sky .tone-warning .sat-label,
 #sky .tone-safe .sat-label {
-  font-size: 34px;
+  font-size: var(--letter-hot, 34px);
 }
 #sky .halo {
   fill: currentColor;
@@ -411,15 +411,22 @@ h3 {
   padding: 0 0 0 8px;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none; /* projector: no scrollbar; the newest steps are scrolled into view */
+  overflow: hidden; /* long chains collapse their middle (store.chainView), never scroll or fade */
 }
 .steps::-webkit-scrollbar {
   display: none;
 }
-.steps.more-above {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 56px);
+.step.collapsed {
+  border-left-style: dotted;
+}
+.step.collapsed::before {
+  display: none;
+}
+.thr {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--ink-2);
+  margin-left: 10px;
 }
 .step {
   position: relative;

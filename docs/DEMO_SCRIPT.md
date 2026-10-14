@@ -39,6 +39,8 @@ Without the board, T1+T2 become one command: `make demo-board-dry VENV=$HOME/aur
 
 Reset before Part 2: `make attack-stop TARGET=B VENV=$HOME/aurora-venv`.
 
+Between full runs (rehearsal, or a second audience): `make stage-reset VENV=$HOME/aurora-venv` releases every attack, ground-clears all 12 satellites (a held quarantine too), restarts the broker, and the dashboard starts a clean session ("Watching 12 satellites. No anomalies."). Incidents also leave the main screen by themselves 10 min after their last update; `/detail` keeps them all.
+
 ## Part 2: masking and propagation, all simulated, time ×10 (about 90 s)
 Stop T1 (Ctrl-C) and the bridge, then T1: `make demo-sw SPEED=10 SEED=2 VENV=$HOME/aurora-venv`. Say: "the same system, every satellite simulated, time ten times faster."
 

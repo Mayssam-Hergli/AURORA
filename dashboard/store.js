@@ -209,8 +209,12 @@
         return null;
       }
       store.counts.messages++;
-      if (isNum(msg.t) && (store.latestT === null || msg.t > store.latestT)) store.latestT = msg.t;
       const { kind, m } = k;
+      // the session clock follows live telemetry; a new run that starts earlier (e.g. after a 10x run
+      // that ran hours ahead) resets it, otherwise old incidents would look recent forever
+      if (isNum(msg.t) && kind === "tm") {
+        if (store.latestT === null || msg.t > store.latestT || msg.t < store.latestT - 600) store.latestT = msg.t;
+      }
       if (kind === "tm") {
         const s = store.sats[m[1]];
         const sub = m[2];
@@ -254,6 +258,7 @@
         store.events.unshift(msg);
         if (store.events.length > maxEvents) store.events.length = maxEvents;
         const d = msg.data || {};
+        if (msg.kind === "startup") store.resetSession(); // the core restarted: a new session
         if (msg.kind === "incident" && d.incident_id) {
           store.incidents[d.incident_id] = Object.assign({}, d, { updated_t: msg.t });
           return kind;
@@ -373,9 +378,19 @@
     };
 
     /** The incident to show: confirmed chains first, then open, contained, or closed in the last
-        `keepClosedS` seconds of message time; the most recently updated within each. Dismissed ones never.
+        `keepS` seconds of message time since its last update; the most recently updated within each. Dismissed ones never.
         null when there is none. */
-    store.activeIncident = (keepClosedS = 600) => {
+    /** Forget the previous session's incidents, lines, decision and countdowns (core restart, stage reset). */
+    store.resetSession = () => {
+      store.incidents = {};
+      store.timeline = [];
+      store.events = [];
+      store.action = null;
+      store.reroutes = [];
+      for (const sat of SATS) store.sats[sat].eta = store.sats[sat].contained = null;
+    };
+
+    store.activeIncident = (keepS = 600) => {
       const rank = { open: 3, contained: 2, closed: 1 };
       let best = null;
       const better = (x, y) => {
@@ -384,7 +399,8 @@
       };
       for (const inc of Object.values(store.incidents)) {
         if (inc.dismissed) continue; // a risk flag that calmed down by itself: not an attack chain
-        if (inc.status === "closed" && store.latestT - inc.updated_t > keepClosedS) continue;
+        // not updated for keepS seconds (any status, e.g. a source held in quarantine): off the main panel
+        if (store.latestT !== null && store.latestT - inc.updated_t > keepS) continue;
         // confirmed chains (action, deception or relay source) before suspected ones
         const key = [inc.confirmed === false ? 0 : 1, rank[inc.status] || 0, inc.updated_t];
         if (!best || better(key, best.key)) best = { inc, key };
@@ -402,7 +418,8 @@
       if (tone === "warning") return "contained";
       if (tone === "safe") return "healing";
       if (s.state === "nominal") return "nominal";
-      return "no data yet";
+      // telemetry but no state: the core publishes states on change only (none retained after a broker restart)
+      return s.src ? "no anomaly reported" : "no data yet";
     };
 
     /** Seconds left to the limit, counted down from the forecaster's last ETA (message time); null if none. */
@@ -416,9 +433,17 @@
     return store;
   }
 
+  /** Chain rows to show: all if they fit; otherwise the first step (the start of the attack), one row
+      for the collapsed middle, and the latest steps. */
+  function chainView(steps, max = 7) {
+    if (steps.length <= max) return steps.map((s) => ({ step: s }));
+    const tail = steps.slice(steps.length - (max - 2));
+    return [{ step: steps[0] }, { collapsed: steps.length - 1 - tail.length }, ...tail.map((s) => ({ step: s }))];
+  }
+
   function isNum(x) {
     return typeof x === "number" && Number.isFinite(x);
   }
 
-  return { createStore, kindOf, narrate, modelLabel, limitName, SATS, SUBSCRIPTIONS, PREFIX, Ring, ACTION_LABEL, CHANNEL, ORBIT };
+  return { createStore, kindOf, narrate, modelLabel, limitName, chainView, SATS, SUBSCRIPTIONS, PREFIX, Ring, ACTION_LABEL, CHANNEL, ORBIT };
 });

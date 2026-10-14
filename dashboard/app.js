@@ -28,10 +28,15 @@
     keepalive: 10,
     clean: true,
   });
+  let wasDown = false;
   client.on("connect", () => {
+    if (wasDown) store.resetSession(); // broker restarted (make stage-reset): start a clean session
+    wasDown = false;
     client.subscribe(SUBSCRIPTIONS, { qos: 0 });
     setConn(true);
   });
+  client.on("offline", () => (wasDown = true));
+  client.on("close", () => (wasDown = true));
   client.on("reconnect", () => setConn(false));
   client.on("offline", () => setConn(false));
   client.on("close", () => setConn(false));
@@ -62,8 +67,8 @@
   for (const O of RAAN) {
     el("ellipse", { cx: C.x, cy: C.y, rx: R, ry: R * Math.cos(INC), class: "ring", transform: `rotate(${-O} ${C.x} ${C.y})` });
   }
-  const linkLayer = el("g", { class: "links" });
-  const relayLayer = el("g", { class: "relay" }); // attack paths of the active incident (C1)
+  const relayLayer = el("g", { class: "relay" }); // attack paths of the active incident (C1), under the links
+  const linkLayer = el("g", { class: "links" }); // so a cut link stays visible (red dashed) over its attack path
   const relayEls = {};
   const satLayer = el("g", { class: "sats" });
   const linkEls = {}; // "A-B" -> <line>
@@ -71,7 +76,7 @@
   const t0Page = Date.now();
   const satEls = {};
   for (const sat of SATS) {
-    const g = el("g", {}, satLayer);
+    const g = el("g", { "data-sat": sat }, satLayer);
     const halo = el("circle", { r: 40, class: "halo", visibility: "hidden" }, g);
     const circle = el("circle", { r: 15, class: "mk-sim" }, g);
     const square = el("rect", { width: 28, height: 28, class: "mk-hw", visibility: "hidden" }, g);
@@ -82,6 +87,12 @@
   }
 
   function renderSky(pos) {
+    // text in screen pixels whatever the diagram's scale: letters >= 20 px, temperatures 22 px
+    const vb = sky.viewBox.baseVal;
+    const scale = Math.min(sky.clientWidth / vb.width, sky.clientHeight / vb.height) || 1;
+    sky.style.setProperty("--letter", `${(22 / scale).toFixed(1)}px`);
+    sky.style.setProperty("--letter-hot", `${(28 / scale).toFixed(1)}px`);
+    sky.style.setProperty("--temp", `${(22 / scale).toFixed(1)}px`);
     // links
     const seen = new Set();
     for (const [key, l] of Object.entries(store.links)) {
@@ -93,7 +104,7 @@
       const pa = project(a.plane, a.phase_deg);
       const pb = project(b.plane, b.phase_deg);
       let line = linkEls[key];
-      if (!line) line = linkEls[key] = el("line", {}, linkLayer);
+      if (!line) line = linkEls[key] = el("line", { "data-link": key }, linkLayer);
       line.setAttribute("x1", pa.x.toFixed(1));
       line.setAttribute("y1", pa.y.toFixed(1));
       line.setAttribute("x2", pb.x.toFixed(1));
@@ -166,17 +177,30 @@
       const dy = p.y - C.y;
       const d = Math.hypot(dx, dy) || 1;
       const off = tone ? 50 : 34; // an abnormal marker is bigger
-      const lx = p.x + (dx / d) * off;
-      const ly = p.y + (dy / d) * off;
+      let lx = p.x + (dx / d) * off;
+      let ly = p.y + (dy / d) * off;
+      const half = (tone ? 28 : 22) / scale / 2 + 4;
+      if (ly - half < vb.y || ly + half > vb.y + vb.height) { // would be clipped: beside the marker instead
+        lx = p.x + (dx >= 0 ? off : -off);
+        ly = p.y;
+      }
       e.label.setAttribute("x", lx.toFixed(1));
       e.label.setAttribute("y", ly.toFixed(1));
       const th = s.fields.thermal;
       if (tone && th && typeof th.temp_c === "number") {
         e.temp.textContent = `${th.temp_c.toFixed(1)} °C`;
-        e.temp.setAttribute("x", (lx + (dx / d) * 4).toFixed(1));
-        // outward like the letter, but never past the diagram's top or bottom edge
-        const below = dy >= 0 ? ly + 34 < 780 : ly - 34 < -20;
-        e.temp.setAttribute("y", (ly + (below ? 34 : -34)).toFixed(1));
+        const gap = 30 / scale; // one screen line beyond the letter, whatever the diagram's scale
+        const out = ly + (dy >= 0 ? gap : -gap); // outward, like the letter
+        if (out > vb.y + 12 && out < vb.y + vb.height - 8) {
+          e.temp.setAttribute("x", (lx + (dx / d) * 4).toFixed(1));
+          e.temp.setAttribute("y", out.toFixed(1));
+          e.temp.setAttribute("text-anchor", "middle");
+        } else { // at the top or bottom edge: beside the letter, never over the marker
+          const side = dx >= 0 ? 1 : -1;
+          e.temp.setAttribute("x", (lx + side * 0.9 * gap).toFixed(1));
+          e.temp.setAttribute("y", ly.toFixed(1));
+          e.temp.setAttribute("text-anchor", side > 0 ? "start" : "end");
+        }
         e.temp.setAttribute("visibility", "visible");
       } else {
         e.temp.setAttribute("visibility", "hidden");
@@ -212,7 +236,8 @@
       : "";
     const head = `<div class="chain-head"><span>Attack chain${inc.sats.length ? " on " + esc(inc.sats.join(", ")) : ""}</span>` +
       `<span class="chain-status st-${esc(inc.status)}">${esc(STATUS_WORD[inc.status] || inc.status)}</span></div>`;
-    const steps = inc.steps.map((st) => {
+    const html = (max) => window.AuroraStore.chainView(inc.steps, max).map(({ step: st, collapsed }) => {
+      if (collapsed) return `<li class="step collapsed"><time></time><div class="step-body"><span class="step-kind">… ${collapsed} more step${collapsed > 1 ? "s" : ""} (all in /detail)</span></div></li>`;
       const tags = (st.sparta || []).map((t) => `<span class="tag">${esc(t.id)}${t.tactic ? " · " + esc(t.tactic) : ""}</span>`).join("");
       const tone = KIND_TONE[st.kind] || "";
       const text = String(st.text).replace(/^Forecast:\s*/, "");
@@ -222,10 +247,12 @@
         `${st.observed ? "" : " · predicted, not observed"}</span>${tags}</div>` +
         `<span class="step-text">${esc(text)}</span></div></li>`;
     }).join("");
-    $("chain").innerHTML = head + who + `<ol class="steps">${steps}</ol>`;
-    const list = $("chain").querySelector(".steps");
-    list.scrollTop = list.scrollHeight; // the newest steps stay in view
-    list.classList.toggle("more-above", list.scrollTop > 0); // earlier steps fade out at the top
+    // as many rows as fit (the first step always stays; the middle collapses); never clip a step
+    for (let max = cfg.chainRows || 7; max >= 3; max--) {
+      $("chain").innerHTML = head + who + `<ol class="steps">${html(max)}</ol>`;
+      const list = $("chain").querySelector(".steps");
+      if (list.scrollHeight <= list.clientHeight + 1) break;
+    }
   }
 
   // the flat timeline (kept for the detail page and as a fallback)
@@ -355,12 +382,22 @@
     const hi = board ? pt.map(() => null) : windowed(s.series.p60_hi)[1];
     const hasBand = lo.some((x) => x !== null);
     const plan = board ? cfg.board.planP : cfg.planP;
+    $("risk-threshold").textContent = board
+      ? `acts at ${plan.toFixed(2)}`
+      : `acts at ${plan.toFixed(2)} · alerts at τ = ${(f && f.model.startsWith("tgn") ? cfg.tau : cfg.warnP).toFixed(3)}`;
     plots.risk.setData([pt, hasBand ? lo : pt.map(() => null), hasBand ? hi : pt.map(() => null), pv, pt.map(() => plan)]);
   }
 
   // ------------------------------------------------------------------ header, footer, loop
   function renderHeader() {
-    $("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC";
+    // every time on screen is message (simulation) time in UTC; the header says so when it is not real time
+    const t = store.latestT;
+    if (t === null) {
+      $("clock").textContent = new Date().toISOString().slice(11, 19) + " UTC";
+    } else {
+      const sim = Math.abs(t - Date.now() / 1000) > 5;
+      $("clock").textContent = hhmmss(t) + (sim ? " UTC, simulation time" : " UTC");
+    }
   }
   function renderFooter() {
     const hw = SATS.some((sat) => store.sats[sat].src === "hw");

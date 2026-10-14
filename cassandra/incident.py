@@ -202,19 +202,30 @@ class Correlator:
         command in the same window (e.g. a routine heater test) is not attached as its cause."""
         recent = [tc for tc in self.recent.get(sat, []) if now - tc.t <= self.window]
         relayed = [tc for tc in recent if tc.origin.startswith("isl:")]
-        for tc in relayed or recent:
-            relayed = tc.origin.startswith("isl:")
-            text = f"{sat}: {command_words(tc.cmd, tc.args)} by {origin_words(tc.origin)}"
+        groups: dict[tuple, list] = {}
+        for tc in relayed or recent:  # repeated copies of one command from one origin: one step
+            groups.setdefault((tc.origin, tc.cmd, tuple(sorted(tc.args.items()))), []).append(tc)
+        for (origin, cmd, args), tcs in groups.items():
+            first = min(tcs, key=lambda x: x.t)
+            n = len({round(x.t, 1) for x in tcs})
+            text = f"{sat}: {command_words(cmd, dict(args))} by {origin_words(origin)}"
+            if n > 1:
+                text += f" ({n} copies)"
+            key = f"cmd:{sat}:{origin}:{cmd}"
+            old = inc.steps.get(key)
+            if old is not None and old.text != text:
+                old.text, inc.dirty = text, True
+                continue
             inc.add(
                 Step(
-                    tc.t,
+                    first.t,
                     sat,
                     "command",
                     text,
-                    ["IA-0003" if relayed else "IA-0009"],
-                    {"type": "telecommand", "id": tc.id, "origin": tc.origin},
+                    ["IA-0003" if origin.startswith("isl:") else "IA-0009"],
+                    {"type": "telecommand", "id": first.id, "origin": origin, "copies": n},
                     True,
-                    f"cmd:{tc.id}",
+                    key,
                 )
             )
 
@@ -358,8 +369,20 @@ class Correlator:
             if inc.status == "closed":
                 continue
             for sat in sorted(inc.sats - {inc.source}):
+                f = forecasts.get(sat)
+                # a victim reached by the relay: its heating is the effect, even before it is flagged
+                if (
+                    sat not in inc.acted
+                    and f is not None
+                    and f.driver is not None
+                    and f.driver.channel == "temp_c"
+                    and f.driver.rate_per_s > 0.02
+                    and not any(st.kind == "effect" and st.sat == sat for st in inc.steps.values())
+                    and any(st.kind == "command" and st.sat == sat for st in inc.steps.values())
+                ):
+                    self._effect(inc, sat, f, now)
                 if sat not in inc.acted:  # forecasts are refreshed until the satellite is contained
-                    self._predict(inc, sat, forecasts.get(sat), now)
+                    self._predict(inc, sat, f, now)
             self._status(inc, now)
         return self._publish(now)
 
@@ -440,6 +463,18 @@ class Correlator:
             and now - inc.last_evidence_t > self.close_after
         ):
             new = "closed"
+            inc.add(
+                Step(
+                    now,
+                    sorted(inc.sats)[0],
+                    "healed",
+                    f"Incident closed: {', '.join(sorted(inc.healed))} back to normal",
+                    ["CM0042"],
+                    {"type": "incident", "status": "closed"},
+                    True,
+                    "closed",
+                )
+            )
             for s in list(inc.sats):
                 if self.by_sat.get(s) is inc:
                     del self.by_sat[s]

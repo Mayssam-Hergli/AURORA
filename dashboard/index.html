@@ -28,7 +28,7 @@
     <main class="main">
       <section class="panel constellation" aria-label="Constellation">
         <h2 class="label">Constellation, seen from above the North Pole</h2>
-        <svg id="sky" viewBox="95 -40 810 840" preserveAspectRatio="xMidYMid meet" role="img"
+        <svg id="sky" viewBox="105 0 790 760" preserveAspectRatio="xMidYMid meet" role="img"
              aria-label="Twelve satellites in three orbital planes, with their inter-satellite links"></svg>
         <ul class="legend" aria-label="Legend">
           <li><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" class="mk-sim" /></svg>simulated by the digital twin</li>
@@ -64,7 +64,7 @@
           <div id="plot-temp" class="plot-area"></div>
         </figure>
         <figure class="plot">
-          <figcaption id="risk-caption">Failure risk, next 60 s</figcaption>
+          <figcaption><span id="risk-caption">Failure risk, next 60 s</span> <span id="risk-threshold" class="thr"></span></figcaption>
           <div id="plot-risk" class="plot-area"></div>
         </figure>
       </section>

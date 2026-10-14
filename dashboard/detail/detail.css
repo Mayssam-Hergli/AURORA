@@ -17,6 +17,7 @@ body.detail {
   padding: 0 28px 28px;
 }
 .detail-main > .panel:first-child,
+.detail-main > .incidents-all,
 .detail-main > .charts3 {
   grid-column: 1 / -1;
 }
