@@ -16,6 +16,7 @@ window.AURORA_DASH = {
   thermal: { twin: { ambient: 10, limit: 45 }, hw: { ambient: 25, limit: 60 } }, // twin buses run 8-25 C
   historyS: 900, // history kept per series: 15 min of message time
   windowS: 300, // seconds shown on the plots
+  windowHwS: 120, // seconds shown when the plotted satellite is the board (real time)
   staleS: 5, // no telemetry for this long: the satellite is shown as silent
   timelineLines: 12, // lines shown in "What CASSANDRA is doing"
 };

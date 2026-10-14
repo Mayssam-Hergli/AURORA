@@ -358,7 +358,8 @@ def run(a) -> int:
     client.on_connect, client.on_message = on_connect, on_message
     client.connect_async(a.broker, a.mqtt_port, keepalive=10)
     client.loop_start()
-    br = Bridge(ser, publish, a.sat, a.log)
+    # --clock-offset: seconds added to this PC's clock when its time is wrong (14 Oct: Windows 2 h behind WSL)
+    br = Bridge(ser, publish, a.sat, a.log, clock=lambda: time.time() + a.clock_offset)
     for s in LED_IDX:
         br.on_state(s, "nominal")
     last_obc = last_print = 0.0
@@ -410,6 +411,7 @@ def main(argv=None) -> int:
     ap.add_argument("--log", default=None, help="CSV of t, true and reported temp_c, heater, mode (2 Hz)")
     ap.add_argument("--seed", type=int, default=0, help="noise seed of the fake board")
     ap.add_argument("--quiet", action="store_true", help="no status line every second")
+    ap.add_argument("--clock-offset", type=float, default=0.0, help="seconds added to message time")
     return run(ap.parse_args(argv))
 
 

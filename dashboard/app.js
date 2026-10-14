@@ -338,8 +338,8 @@
       [{ series: [2, 1], fill: css("--grid") + "aa" }],
     ),
   };
-  function windowed(ring) {
-    const from = ring.t.length ? ring.t[ring.t.length - 1] - cfg.windowS : 0;
+  // both plots share one time window ending at the latest message time, so their axes line up
+  function windowed(ring, from) {
     let i = 0;
     while (i < ring.t.length && ring.t[i] < from) i++;
     return [ring.t.slice(i), ring.v.slice(i)];
@@ -347,7 +347,16 @@
 
   function chooseFollow() {
     if (cfg.follow && SATS.includes(cfg.follow)) return cfg.follow;
-    if (store.toneOf(follow, cfg.healBelowC)) return follow; // stay on a satellite while it is abnormal
+    const tone = (x) => store.toneOf(x, cfg.healBelowC);
+    if (tone(follow) === "caution") return follow; // stay on a satellite while it is still at risk
+    // a satellite at risk and not yet contained comes first: in C1 the heating victim, not the held source
+    const p60 = (x) => {
+      const f = store.sats[x].forecast;
+      return f && !f.warming_up && typeof f.p_fail["60"] === "number" ? f.p_fail["60"] : 0;
+    };
+    const atRisk = SATS.filter((x) => tone(x) === "caution").sort((a, b) => p60(b) - p60(a));
+    if (atRisk.length) return atRisk[0];
+    if (tone(follow)) return follow; // stay on a satellite while it is abnormal
     return store.atRisk(cfg.fallback, cfg.calmP);
   }
 
@@ -370,22 +379,33 @@
 
     const th = s.src === "hw" ? cfg.thermal.hw : cfg.thermal.twin;
     ranges.temp = [th.ambient - 5, th.limit + 5];
-    const [tt, tv] = windowed(s.series.temp_c);
-    plots.temp.setData([tt, tv, tt.map(() => th.limit)]);
+    // shared window: 2 min for the board (real time), 5 min of message time for the twins; until that much
+    // history exists it starts at the first sample, so the lines fill the plot from the first seconds
+    const now = store.latestT;
+    const span = s.src === "hw" ? cfg.windowHwS || cfg.windowS : cfg.windowS;
+    const first = s.series.temp_c.t.length ? s.series.temp_c.t[0] : null;
+    const from = now === null ? 0 : Math.max(now - span, first === null ? now - span : Math.min(first, now - 10));
+    const [tt, tv] = windowed(s.series.temp_c, from);
+    // the window's two edges as extra x points (no data there), so the limit line runs edge to edge
+    const edge = (xs) => (now === null ? xs : [from, ...xs, now]);
+    const gap = (ys) => (now === null ? ys : [null, ...ys, null]);
+    plots.temp.setData([edge(tt), gap(tv), edge(tt).map(() => th.limit)]);
     plots.temp.setScale("y", { min: ranges.temp[0], max: ranges.temp[1] });
 
     // the board decides on P(F<30 s) >= 0.85, the twins on P(F<60 s) >= 0.5: plot what decides
     const board = s.src === "hw" && cfg.board;
     $("risk-caption").textContent = `Failure risk, next ${board ? cfg.board.horizonS : 60} s`;
-    const [pt, pv] = windowed(board && cfg.board.horizonS === 30 ? s.series.p30 : s.series.p60);
-    const lo = board ? pt.map(() => null) : windowed(s.series.p60_lo)[1];
-    const hi = board ? pt.map(() => null) : windowed(s.series.p60_hi)[1];
+    const [pt, pv] = windowed(board && cfg.board.horizonS === 30 ? s.series.p30 : s.series.p60, from);
+    const lo = board ? pt.map(() => null) : windowed(s.series.p60_lo, from)[1];
+    const hi = board ? pt.map(() => null) : windowed(s.series.p60_hi, from)[1];
     const hasBand = lo.some((x) => x !== null);
     const plan = board ? cfg.board.planP : cfg.planP;
     $("risk-threshold").textContent = board
       ? `acts at ${plan.toFixed(2)}`
       : `acts at ${plan.toFixed(2)} · alerts at τ = ${(f && f.model.startsWith("tgn") ? cfg.tau : cfg.warnP).toFixed(3)}`;
-    plots.risk.setData([pt, hasBand ? lo : pt.map(() => null), hasBand ? hi : pt.map(() => null), pv, pt.map(() => plan)]);
+    const none = pt.map(() => null);
+    plots.risk.setData([edge(pt), gap(hasBand ? lo : none), gap(hasBand ? hi : none), gap(pv), edge(pt).map(() => plan)]);
+    if (now !== null) for (const u of [plots.temp, plots.risk]) u.setScale("x", { min: from, max: now });
   }
 
   // ------------------------------------------------------------------ header, footer, loop
