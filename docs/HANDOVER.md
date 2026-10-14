@@ -1,166 +1,110 @@
-# AURORA handover (12 Oct 2026, evening)
+# AURORA handover (14 Oct 2026, deadline day)
 
-From Mayssam Hergli (with Claude Code). **Deadline: 14 Oct 2026.** This file covers what exists, how to run it, and what is left, in order. The long history is in [STATUS.md](STATUS.md); the plan and gates are in [MASTER_PLAN.md](MASTER_PLAN.md); the message contract is [interfaces.md](interfaces.md) (v1.2, frozen).
+From Mayssam Hergli (with Claude Code). This file is the single starting point: what exists, how to run it, what is left in order, and the rules. Details: [STATUS.md](STATUS.md) (history and decisions), [NUMBERS.md](NUMBERS.md) (every number, with its file and command), [DEMO_SCRIPT.md](DEMO_SCRIPT.md) (the stage script, measured), [interfaces.md](interfaces.md) (the contract, v1.3), [hardware/BRINGUP.md](../hardware/BRINGUP.md) (the board).
 
 ## 1. State in one paragraph
 
-The whole software system works end to end:
-- the digital twin (12 satellites);
-- the CASSANDRA core (forecast, sandbox, act, explain), with the trained ensemble loaded;
-- the attack scripts (A1, B1, C1, faults);
-- the ESP8266 board bridge (tested with a fake board only);
-- the operator dashboard, redesigned today.
+The software system is finished and rehearsed:
+- **Constellation:** a 12-satellite digital twin.
+- **CASSANDRA core:** forecasting with the learned ensemble, monitor, sandbox, response with escalation, explanations, and an **incident correlator** that assembles the attack chain from observed evidence only.
+- **Attacks:** A1, B1, C1, faults, N.
+- **Board bridge:** the ESP8266 bridge, tested with a fake board running the firmware's model.
+- **Operator dashboard:** one screen, "dark cockpit", the attack chain, `/detail`.
 
-All 186 tests pass, broker tests included, and lint is clean. The real board has **not** been connected yet. The demo has **not** been rehearsed or recorded. The paper text is not in the repo.
+Test and rehearsal status:
+- **Tests:** about 200 pass (Python 3.11, broker up, on mains power); lint is clean.
+- **Rehearsal:** the unattended rehearsal (`scripts/rehearse.py`) passed **3 times** end to end (board Part 1 on the dry-run board, Part 2 at 10×).
 
-## 2. Where the code is
+What is left:
+- the **real board** (Block 5),
+- the **backup video**,
+- the **paper and slides text** (the numbers are ready),
+- a few decisions (section 6).
 
-| Branch | On GitHub? | What |
-|---|---|---|
-| `p9-integration` | yes (2de8c05) | **Everything. Work here.** Our chain plus Youssef's p2/p3/p7 merged onto it |
-| `p4-core`, `p5-scenarios`, `p8-board` | yes | earlier steps of the same chain (contained in p9) |
-| our local `p2-ml-fixes`, `p3-twin`, `p7-dashboard` | **no, and never push them** | Youssef's branches with the same names are on GitHub with a different history. p9 contains all of ours |
-| `main` | yes (2cd9cfa, PR #1) | untouched. Merging into main needs Mayssam's OK |
-| `rami` | yes (Rami Troudi) | rami branch not merged; not used for this submission. |
+## 2. Code and GitHub
 
-**Uncommitted on `p9-integration` (commit this first):** the dashboard redesign, plus the small core and twin changes it needs, plus this file. Tests pass (on mains power):
-```bash
-cd /c/Users/USER/AURORA        # Git Bash
-git switch p9-integration
-git add cassandra/act.py cassandra/explain.py ml/synthetic/constellation.py twin/service.py \
-        tests/cassandra/test_act.py tests/test_twin_service.py dashboard/ docs/HANDOVER.md
-git commit -m "Dashboard redesign (dark cockpit) + handover notes"
-git push origin p9-integration
-```
-
-**Models release: done (13 Oct).** GitHub release `models-v2` holds `aurora-models-v2.zip` (869,874 B, sha256 `87253c7408976cf9b40100997aa84ee75d9b3783cfef16e75292c560e547bff7`, pinned in `eval/datasets/download.py`; per-file SHA-256s in the release notes). Verified on a clean clone of `p9-integration`: `make models` downloads it, checks the hash, unpacks 8 files into `data/models`, and the core loads `tgn-v1` with 5 models. The GitHub CLI is not installed on this laptop: release edits go through the web page, and a release is only usable once its asset shows as uploaded.
-
-**Not yet done on GitHub:**
-- No PR is open. Youssef's PR #2 sits on top of his own branches and is superseded by p9-integration; agree with him before closing it.
-
-## 3. Run it (laptop: Windows 11 + WSL Ubuntu)
-
-Always work **on mains power**. On battery, Windows throttles the CPU: the ensemble then takes about 160 ms per tick instead of about 40 ms, and the broker tests fail.
-
-```bash
-# WSL. Use the Linux-side venv: the repo's .venv on /mnt/c takes ~90 s to import torch
-cd /mnt/c/Users/USER/AURORA
-export V="VENV=$HOME/aurora-venv"
-make up $V                          # Mosquitto in Docker: 1883 (MQTT), 9001 (WebSocket). Keep this WSL terminal open
-make demo-sw $V                     # twin (A-L) + core. SPEED=10 to fast-forward; keep SPEED <= 10 with the ensemble
-make dashboard $V                   # second terminal -> http://localhost:8080 (F11). /detail/ = per-subsystem page
-make attack A1 TARGET=B $V          # also B1, C1, F1, N; ATTACK_ARGS="--reassert 5" for A1
-make attack-stop TARGET=B $V        # reset
-PY=$HOME/aurora-venv/bin/python bash scripts/preflight.sh   # pre-demo checklist, all green expected
-~/aurora-venv/bin/python -m pytest -q tests     # 186 tests; needs `make up` for the broker tests
-make lint $V
-```
-
-With the board as satellite B: `make demo-sw SATS=A,C-L $V`, then in **Windows PowerShell**:
-`cd C:\Users\USER\AURORA; .\.venv-win\Scripts\python.exe hardware\esp8266_bridge\bridge.py --port COM9 --sat B --log curve.csv`.
-Without the board: `make demo-board-dry $V` (a fake board running the firmware's model). Details and troubleshooting: [hardware/BRINGUP.md](../hardware/BRINGUP.md).
-
-## 4. How it works, and where it lives
-
-| Step | What | Code |
-|---|---|---|
-| Plant | 12 satellites, 3 orbital planes × 4, real engine physics, telemetry at 1 Hz on `aurora/v1/sat/{id}/tm/{sub}`. Applies telecommands with the SAFE rule (interfaces.md 3.2). Red-team effects (freeze, bias, relay) and faults. Ground truth only on `gt/` | `twin/service.py`, `ml/synthetic/engine.py` |
-| Board | ESP8266 NodeMCU = satellite B; temperature computed by its firmware; serial ↔ MQTT bridge with its own SAFE rule and LEDs for A/B/C | `hardware/esp8266_bridge/bridge.py`, `prototype/phase2-demo/` |
-| Attacks | A1 latched heater, B1 heater + frozen report, C1 compromised neighbour relaying over ISL, faults F1–F5, N clean | `attacks/run.py` |
-| Core: ingest | 1 s ticks on message time, freshness, seq/provenance checks | `cassandra/ingest.py` |
-| Core: monitor | tampered telemetry (frozen, or heater on but temperature not rising) → temperature untrusted, estimated instead | `cassandra/monitor.py` |
-| Core: forecast | P(failure within 10/30/60/120 s): trained 5-model ensemble for twin satellites (flags at τ = 0.0153), trajectory forecaster for the board; time to the limit | `cassandra/forecast.py`, `ml/online.py` |
-| Core: sandbox | from P ≥ 0.5: simulate none / isolate / safe mode / block source / quarantine for 60 s on a shadow twin built only from observations; score J = risk + lost service + cost + uncertainty | `cassandra/sandbox.py` |
-| Core: act + explain | cheapest safe option, uncertainty gate, 25 % quarantine budget, escalation ladder, heal; every step on `core/event` (with machine-readable `data`) | `cassandra/act.py`, `cassandra/explain.py` |
-| Dashboard | one read-only screen: constellation, "What CASSANDRA is doing" in plain language, options compared, satellite at risk. Never reads `gt/` | `dashboard/` (see its README) |
-| ML pipeline | generate → train → evaluate → closed loop → robustness → stress → export → figures | `bash scripts/overnight_pipeline.sh`, `ml/`, `eval/` |
-
-## 5. Gates (MASTER_PLAN)
-
-| Gate | State |
+| Item | State |
 |---|---|
-| G0 repo health, G1 contract + broker | ✅ |
-| G2 ML fixed and retrained, G3 live twin, G4 A1 software loop, G5 scenarios | 🔎 ready for Mayssam's review (evidence in STATUS.md) |
-| G6 real board | ⏳ **not started**: needs the board plugged in |
-| G7 demo rehearsed + backup recording | ⏳ **not started** |
+| Branch to use | **`p9-integration`**: everything. `main` untouched (merging needs Mayssam's OK). |
+| Not used | `rami` (Rami Troudi): not merged; not used for this submission. Our local `p2-ml-fixes`, `p3-twin`, `p7-dashboard`: never push them (Youssef's branches with the same names are on GitHub). |
+| Models | GitHub release **`models-v2`** (`aurora-models-v2.zip`, sha256 `87253c74…bff7`, pinned in `eval/datasets/download.py`). `make models` downloads and verifies it; verified on a clean clone. |
+| Last local commits | `4892e26` (incident correlator) is committed **but was not pushed** at the time of writing; the commit block at the end of the latest session pushes it with Blocks 6–7. Check with `git log --oneline origin/p9-integration..HEAD` (empty = all pushed). |
 
-## 6. Numbers (only quote these, with their source)
+## 3. Run it (Windows 11 + WSL Ubuntu, on mains power)
 
-All from `results/manifest.json` (run on 12 Oct; commands are inside) and the tables in STATUS.md. Simulation only.
-- **Ensemble, at 0.1 % false-positive rate:**
+```bash
+cd /mnt/c/Users/USER/AURORA                      # WSL; keep one WSL terminal open (WSL stops the broker otherwise)
+export V="VENV=$HOME/aurora-venv"                # Linux-side venv: the core starts in seconds
+make up $V                                       # Mosquitto: 1883 MQTT, 9001 WebSocket
+PY=$HOME/aurora-venv/bin/python bash scripts/preflight.sh    # green/red checklist (power, broker, models, dashboard, COM port, disk)
+make demo-board-dry $V                           # twin A, C-L + core + fake board as B   (or: make demo-sw $V, all simulated)
+make dashboard $V                                # second terminal -> http://localhost:8080 (F11); /detail/ for per-subsystem charts
+make attack A1 TARGET=B $V                       # also: B1 TARGET=E, C1 TARGET=D; ATTACK_ARGS="--reassert 5 --duration 40"
+make attack-stop TARGET=B $V
+$HOME/aurora-venv/bin/python scripts/rehearse.py --runs 1    # the whole demo, unattended and timed (~3.5 min)
+make test $V && make lint $V
+```
 
-  | Split | Recall | Median lead |
-  |---|---|---|
-  | ID | 1.00 | 133 s |
-  | OOD | 1.00 | 135 s |
-  | Real noise | 1.00 | 158 s |
+Real board as B: `make demo-sw SATS=A,C-L $V` in WSL, plus in Windows PowerShell
+`.\.venv-win\Scripts\python.exe hardware\esp8266_bridge\bridge.py --port COMx --sat B` (COMx from preflight).
 
-  At the core's action thresholds, recall is 0.89 / 0.74 / 0.70 with about 38 s lead.
-- **Baselines (ID):**
+## 4. Done, with evidence
 
-  | Baseline | Recall | Median lead | Note |
-  |---|---|---|---|
-  | Threshold | 0.90 | 49 s | |
-  | Trajectory | 0.86 | 20 s | |
-  | GDN | 0.69 | 167 s | 6.5 pre-onset false alarms per satellite-hour |
-  | LSTM-AE | 0.35 | 197 s | |
+| Block | What | Evidence |
+|---|---|---|
+| 1 | Staged work committed; heal-temperature test fixed | commit 93e7ac2 |
+| 2 | Dashboard redesign ("dark cockpit", plain language, constellation, options, satellite at risk, `/detail`) | `results/dashboard_screens/1_…` to `7_…` (1920, 1280, projector) |
+| 3 | Board rule P(F<30 s) ≥ 0.85; C1 future victims; physics-bounded monitor and estimate; re-runs | STATUS.md "Block 3"; `results/phase6_block3.json`, `phase6_c1_prefix.json`, `board_rule_dryrun.txt` |
+| 4 | models-v2 release; `make models` verified on a clean clone | release page; HANDOVER section 2 |
+| Incident | Attack-chain correlator (`cassandra/incident.py`, event kind `incident`); chain view on the dashboard; rule-based next subsystem on the board; live 10× monitor bug fixed | `tests/cassandra/test_incident.py`; `results/incident_metrics.json`; screenshots `results/dashboard_screens/8_chain_*` |
+| 6 | DEMO_SCRIPT.md rewritten with measured times; preflight.sh with green/red summary; 3 unattended rehearsals, all milestones met | `results/rehearsal.json` (2 runs), `results/logs/show_run.json` (watched run) |
+| 7 | NUMBERS.md generated from the results files (headline test_ood at 0.1 % FPR with intervals; ID/real-noise table with the saturation caveat; closed loop as upper bound; live scenarios; attack-chain metrics) | `python scripts/write_numbers.py` |
 
-  The benchmark saturates: every ablation also reaches recall 1.00.
-- **Closed loop:** 13 of 18 failures averted (72 %, 95 % CI 49–87 %). This is an upper bound, because the planner uses the simulator as its model.
-- **Latency:** 17.6–34.1 ms median for the 5-model ensemble, depending on machine load.
-- **Phase 6 live runs:** 12 of 12 within limits (`results/live_manifest.json`). C1 quarantines the source in 2 of 3 seeds.
+Note: the rehearsals ran **on battery** (laptop unplugged at the time) and still met every milestone; re-run once on mains power before going on stage.
 
-Do **not** use PR #1's old numbers or the overnight GDN figure (0.80 / 222 s): that one was inflated by the M3 bug, since fixed.
+## 5. What is left, in order
 
-## 7. What is left, in order
+**Block 5: the real board (G6), ~30–45 min, at the board.** Follow `hardware/BRINGUP.md`, one step at a time:
+1. Plug the NodeMCU in with a **data** USB cable. `preflight.sh` (board section) must show "USB-serial board found: … (COMx)". On 13 Oct only Bluetooth ports (COM5–8) were visible; if it is still missing, try another cable, then install the CP210x driver (Silicon Labs).
+2. Wiring per `prototype/phase2-demo/docs/amica_wiring.png`: 3 dual-colour common-cathode LEDs (A: D1 green, D2 red; B: D5/D6; C: D7/D0), each common leg → 150 Ω → GND; leave D3, D4, D8 free.
+3. WSL: `make up $V`, then `make demo-sw SATS=A,C-L $V`; Windows: the bridge on that COMx. Expect "connected to localhost:1883", LEDs green, B a **square** on the dashboard.
+4. `make attack A1 TARGET=B $V`. Expect, as rehearsed on the dry-run board: B amber ~6 s after Enter, heater cut ~22 s at ~54 °C, healed ~31 s. Record: the bridge with `--log curve.csv`, and the times (`python scripts/rehearse.py` cannot drive the real bridge; note them by hand or film the screen).
+5. If the real board differs from the dry run (timing, margin to 60 °C), adjust `satellites.board_profile` (`act_horizon_s`, `plan_p`) and note it in STATUS.md.
 
-**Today / first thing**
-1. ~~Commit and push the dashboard work; upload the models-v2 release.~~ Done 13 Oct.
-2. Send Youssef the merge summary; Mayssam has a draft. Agree what happens to PR #2 and his remote p2/p3/p7.
-3. **Board bring-up (G6), about 30 min:** follow [hardware/BRINGUP.md](../hardware/BRINGUP.md) (5 commands).
-   - Check that the bridge prints `connected`, B appears as a **square** on the dashboard, and the LEDs follow the states.
-   - Run `make attack A1 TARGET=B`. Expected: contained about 2–4 s after the command, then healed.
-   - Record `curve.csv` (bridge only, press FLASH) for the paper.
+**Backup video (G7).** On mains power: Part 1 with the real board (or `make demo-board-dry`) and Part 2 at 10×, following DEMO_SCRIPT.md. OBS or Windows Game Bar (Win+Alt+R) on the browser window. Keep it under 4 minutes.
 
-**13 Oct**
+**Paper and slides.** Copy numbers from `docs/NUMBERS.md` only (one set: `results/manifest.json`). Headline: test_ood at 0.1 % FPR with its interval. ID table with the saturation caveat. Closed loop labelled upper bound. Footnote "Technique mapping refined in Phase 3." wherever IA-0003 / DE-0002 / DE-0003 appear. The paper source is not in this repo.
 
-4. **Fix the monitor's false alarms** (core; needs Mayssam's OK, see section 8). An honestly heating twin satellite is sometimes flagged "heater on but temperature not rising": the 10 s slope is too noisy for the 0.02 °C/s threshold. Fix options:
-   - (a) a significance test on the slope (flag only when slope + k·SE is still below the threshold);
-   - (b) compare against the thermal model's expected rise.
+**Final checks (on stage day).** `preflight.sh` all green on mains power; one `rehearse.py --runs 1`; push; freeze (no code changes after the last rehearsal).
 
-   Then re-run `python scripts/phase6_runs.py` and the tests. Seen live on 12 Oct; `results/dashboard_screens/` shows it in the timeline.
-5. **Rewrite [DEMO_SCRIPT.md](DEMO_SCRIPT.md)** for the new dashboard. It still describes the old tiles and event log. Say "contains", not "quarantines", unless the screen says quarantined.
-6. **Two timed rehearsals** with the board (G7). Then **record the backup video** of the same run.
-7. **Paper and slides:** copy numbers only from section 6 / `results/manifest.json`. Add the SPARTA footnote "Technique mapping refined in Phase 3." wherever the new IDs appear. The figures are in `docs/figures/v1/` (regenerated 12 Oct).
+## 6. Decisions still open (Mayssam's call)
 
-**14 Oct**
+- **Board margin:** the board rule cuts the heater at ~54 °C, 6 °C under the 60 °C limit (dry run). Keep, or act earlier (`act_horizon_s: 60`)? Decide after the real board.
+- **Paper headline:** ensemble recall at the 0.1 % FPR alert level (1.00, 135 s on test_ood) vs at the core's action threshold (0.73, 36 s on test_ood). NUMBERS.md gives both.
+- **Offline closed-loop planner** is over the 150 ms budget (254–461 ms); the live core is within it (~60–160 ms). Report as offline-only, or optimise.
+- **Merge into `main`:** when, and whether PR #2 (Youssef) is closed as superseded by `p9-integration`.
 
-8. `bash scripts/preflight.sh` (all green), a final rehearsal, then freeze: no code changes after it.
+## 7. Known issues (say them, or avoid them on stage)
 
-## 8. Open decisions (Mayssam decides, not the implementer)
+- **Battery:** on battery the CPU is throttled; the core can fall behind a 10× plant. Plug in.
+- **Brief false flags:** the ensemble flags at a low alert level (τ ≈ 0.015), so a healthy satellite is sometimes flagged for a few seconds (no action). On the dashboard they never become an attack chain (suspected incidents are dismissed).
+- **Heater-consistency rule near equilibrium:** a heater warming very slowly can be flagged as inconsistent; the core then estimates the temperature (conservative). Seen once as an extra "deception" step on a C1 victim.
+- **Repeated A1 on the same satellite within ~5 min** is read as a continuing attack (escalation to safe mode). For a clean A1 on stage, reset with `attack-stop` and wait, or restart the demo.
+- **Board:** temperature computed by the firmware (no sensor); ISL cuts on the board are logical; one board only.
+- **Benchmark saturation:** every ablation reaches recall 1.00 on the synthetic sets; the graph's benefit is not shown.
 
-- **Monitor fix:** (a) or (b) above. It changes detection behaviour, so Phase 6 must be re-run.
-- **Board demo length:** today the core contains the board about 2 s after the attack, at about 29 °C, so the audience barely sees B heat up. Options:
-  - keep it, and show the climb with `--reassert` or the heating-curve video;
-  - give the board profile a later action threshold (e.g. plan at 0.85).
-- **C1:** should quarantine of the relaying source be systematic? Today J chooses it in 2 of 3 runs; making it systematic means changing J's objective.
-- **Paper headline:** ensemble recall at τ (1.00 / 133 s) or at the action thresholds (0.89 / 38 s).
-- **Offline closed-loop planner:** 254–461 ms against the 150 ms budget (the live core is within budget). Fix it, or report it as offline-only?
-- **Contract v1.3** (fault effects on `redteam/`) is a message-format change: needs explicit agreement.
+## 8. Gotchas
 
-## 9. Gotchas (each one cost time)
+- WSL shuts down when no WSL program runs, and the broker with it ("connection refused" on Windows): keep one WSL terminal running.
+- Use `VENV=$HOME/aurora-venv`: the repo's `.venv` on /mnt/c imports torch in ~90 s.
+- `python -m ml.export --bench-only` overwrites `results/latency.json`; never under load. Restore from `results/manifest.json`.
+- Re-running `make evaluate` rewrites `calibration.json` → the models-v2 hash changes: rebuild with `python -m ml.export --bundle v2`, re-pin, new release.
+- Close the Arduino IDE serial monitor before the bridge (it holds the COM port).
+- Port 6379 belongs to the Phase 2 Redis fallback (`sat_b_redis`); leave it alone.
 
-- **WSL shuts down when no WSL program is running, and the broker dies with it.** Keep one WSL terminal open (`make demo-sw`). Windows then reports "connection refused".
-- **Battery = throttled CPU:** the ensemble core falls behind a 20x plant, and integration tests fail. Plug in.
-- **Retained MQTT states from earlier fast-forwarded runs** carry future timestamps. The integration tests drop states received before the core is ready; do the same in any new test that watches states.
-- `python -m ml.export --bench-only` **overwrites `results/latency.json`**. Don't run it on battery or under load. If it happens, restore the file from the copy inside `results/manifest.json`.
-- Re-running `make evaluate` rewrites `data/models/calibration.json`. That changes the models-v2 zip hash: rebuild with `python -m ml.export --bundle v2` and update the pin in `eval/datasets/download.py`.
-- Port 6379 belongs to the Phase 2 Redis fallback (`sat_b_redis`); leave it alone. The Phase 2 demonstrator in `prototype/phase2-demo/` is the last-resort demo.
-- Close the Arduino IDE serial monitor before starting the bridge: it holds COM9.
+## 9. Rules that still hold
 
-## 10. Rules that still hold
-
-- **Honesty:** every number in the paper, slides or voiceover comes from a `results/` file produced by code, with its command. Simulated satellites, firmware-computed temperatures and logical link cuts are said out loud.
-- **Ground-truth isolation:** the core and the dashboard never subscribe to `gt/` or `redteam/`. A static test enforces this for the core: `tests/cassandra/test_gt_isolation.py`.
-- **Git:** never force-push. Never push our local p2/p3/p7. Nothing goes into `main` without Mayssam's OK.
-- **Contract:** `docs/interfaces.md` is frozen. Extra telemetry fields and `core/event.data` are allowed; anything else needs agreement.
+- **Honesty:** every published number comes from a `results/` file produced by code, with its command (NUMBERS.md). Simulated satellites, firmware temperatures and logical link cuts are said out loud. "Contains" for A1.
+- **Ground-truth isolation:** the core and the dashboard never subscribe to `gt/` or `redteam/`; `tests/cassandra/test_gt_isolation.py` enforces it for the core.
+- **Git:** never force-push; never push our local p2/p3/p7; nothing into `main` without Mayssam's OK; the `rami` branch is not merged.
+- **Contract:** `docs/interfaces.md` v1.3 is frozen. Extra telemetry fields and `core/event.data` are allowed; anything else needs agreement.

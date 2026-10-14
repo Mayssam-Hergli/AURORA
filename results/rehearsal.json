@@ -1,0 +1,56 @@
+{
+ "what": "Unattended demo rehearsal in software (board dry run real time; constellation at 10x). Seconds after each attack command, wall clock, as the dashboard receives them.",
+ "command": "python scripts/rehearse.py --runs 2",
+ "runs": [
+  {
+   "run": 1,
+   "A1_board": {
+    "flagged_s": 6.1,
+    "chain_command_s": 6.1,
+    "heater_cut_s": 22.1,
+    "healed_s": 31.1
+   },
+   "A1_reassert_board": {
+    "first_action_s": 21.4,
+    "safe_mode_s": 21.4,
+    "healed_after_stop_s": 53.5
+   },
+   "B1_10x": {
+    "deception_s": 2.9,
+    "contained_s": 12.9,
+    "healed_s": 25.7
+   },
+   "C1_10x": {
+    "source_flagged_s": 4.4,
+    "source_quarantined_s": 5.7
+   },
+   "wall_s": 205.0,
+   "missing": []
+  },
+  {
+   "run": 2,
+   "A1_board": {
+    "flagged_s": 5.4,
+    "chain_command_s": 5.5,
+    "heater_cut_s": 21.4,
+    "healed_s": 30.4
+   },
+   "A1_reassert_board": {
+    "first_action_s": 22.3,
+    "safe_mode_s": 22.3,
+    "healed_after_stop_s": 53.2
+   },
+   "B1_10x": {
+    "deception_s": 3.0,
+    "contained_s": 12.6,
+    "healed_s": 24.5
+   },
+   "C1_10x": {
+    "source_flagged_s": 5.5,
+    "source_quarantined_s": 6.7
+   },
+   "wall_s": 202.2,
+   "missing": []
+  }
+ ]
+}
