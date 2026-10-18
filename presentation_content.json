@@ -1,0 +1,268 @@
+{
+  "deck_title": "AURORA / CASSANDRA: forecasting attack-induced satellite failures before they happen",
+  "event": "IASTAM 6.0 Technical Challenge, Track 5 (Cybersecurity), Problem 10: Detecting an Attack Before Mission Failure",
+  "team": ["Mayssam Hergli", "Youssef Mhamdi", "Rami Troudi", "Eya Jendoubi", "Youssef Atig"],
+  "affiliation": "INSAT, Tunis",
+  "split": "Slides 1-6 technical, slides 7-11 business",
+  "honesty_rules": [
+    "Every number on the technical slides comes from a result file in the repository (see data_sources on each slide).",
+    "All results are from simulation or from one ESP8266 board whose temperature is computed by its firmware; none is a flight measurement.",
+    "The synthetic benchmark is easy: simpler variants of our model detect as well, so do not present the detection rate as proof that the graph model is better.",
+    "Closed-loop numbers are optimistic (the planner uses the same simulator as the plant): always say 'upper bound'.",
+    "The business slides contain no market sizes, prices or revenue figures: those are hypotheses to validate, and the slides say so.",
+    "Say 'reduces mission impact', never 'prevents all attacks'; for attack A1 say 'contains', not 'quarantines'."
+  ],
+  "design_system": {
+    "palette": {
+      "navy_background": "#0B1F33",
+      "teal_accent": "#0072B2",
+      "amber_warning": "#E69F00",
+      "red_critical": "#D55E00",
+      "green_ok": "#009E73",
+      "light_background": "#F4F6F8",
+      "text_dark": "#1B1B1B"
+    },
+    "typography": "Barlow or Inter; titles 40 pt bold, headline 24 pt, bullets 18 pt, callout numbers 54-72 pt",
+    "rules": [
+      "Technical slides on the navy background, business slides on the light background, same accent colours.",
+      "Colour only means state: green nominal, amber at risk, red contained or critical, as on the dashboard.",
+      "One idea per slide; at most 5 bullets; numbers in callouts, never buried in sentences.",
+      "Put a small grey footnote 'Simulation / emulated hardware' on every slide that shows a result."
+    ]
+  },
+  "slides": [
+    {
+      "slide_number": 1,
+      "title": "AURORA: see the failure coming",
+      "category": "Technical",
+      "layout_type": "Full-bleed cover with central title and 3 small metric chips",
+      "visual_directives": "Navy background with a thin orbit line crossing the slide and 12 small dots (3 planes x 4 satellites); one dot amber. Title centred, project name AURORA large, CASSANDRA as the subtitle. Event and organiser logos as provided by the organisers in the top corners. Three small chips at the bottom with the callouts. Team names and INSAT in small type at the bottom.",
+      "headline": "A student prototype that estimates how long a satellite has before an attack makes it fail, and acts first with the mildest response that works.",
+      "bullet_points": [
+        "Track 5 (Cybersecurity), Problem 10: detecting an attack before mission failure",
+        "Testbed: 12 satellites, 11 simulated and 1 physical ESP8266 board, on one message bus",
+        "Defence: failure forecast, consistency check, response tested in simulation before acting"
+      ],
+      "metric_callouts": [
+        {"value": "135 s", "label": "median warning before failure (synthetic held-out scenarios)"},
+        {"value": "0 / 21", "label": "live runs where a satellite reached its limit"},
+        {"value": "1 board", "label": "real hardware in the loop"}
+      ],
+      "speaker_notes": "Good afternoon, we are team AURORA from INSAT. Instead of only asking whether a value is abnormal, our prototype asks how long a satellite has before an attack makes it fail, and tries to act before that point. Everything we show is from simulation or from one board on the table, and we will be clear about what that means.",
+      "data_sources": ["docs/NUMBERS.md (headline test_ood)", "results/phase6_block3.json", "results/live_manifest.json"]
+    },
+    {
+      "slide_number": 2,
+      "title": "Attacks unfold in stages",
+      "category": "Technical",
+      "layout_type": "2-Column Split (timeline graphic vs text)",
+      "visual_directives": "Left: a horizontal timeline in four steps with icons (terminal = malicious command, thermometer = temperature drift, battery = power drain, satellite with red cross = failure); a grey 'threshold alarm' marker placed at the last step and a teal 'our warning' marker placed early. Right: three short bullets. Small source line under the timeline: Viasat 2022, SentinelLABS 2022.",
+      "headline": "By the time a single-parameter alarm fires, the damage is already under way; the early signals are weak and spread across subsystems.",
+      "bullet_points": [
+        "KA-SAT 2022: a compromised management segment pushed a wiper to tens of thousands of terminals, in stages",
+        "On a satellite the same pattern looks like an odd command, a small thermal drift, a slight attitude change",
+        "Constraints we work with: 1 s decision ticks, 150 ms budget per tick, links that appear and disappear with orbital geometry, a battery and a temperature limit",
+        "Risk of defending too hard: an attacker can fake warning signs to make the defence switch off healthy satellites"
+      ],
+      "metric_callouts": [
+        {"value": "1 s", "label": "decision cycle"},
+        {"value": "150 ms", "label": "compute budget per cycle"},
+        {"value": "45 / 60 °C", "label": "temperature limits (simulated satellites / board)"}
+      ],
+      "speaker_notes": "Real attacks on space systems do not start with a failure; they start with small signals spread across subsystems. A limit alarm only fires when the limit is reached, which is too late to choose a gentle response. So the question we work on is time: how long is left, and what is the least disruptive thing to do now.",
+      "data_sources": ["docs/CONTEXT.md sections 1-3", "cassandra/config.yaml", "docs/interfaces.md section 5"]
+    },
+    {
+      "slide_number": 3,
+      "title": "How it fits together",
+      "category": "Technical",
+      "layout_type": "Full-width architecture diagram with 5 numbered stages",
+      "visual_directives": "Left column: 'Physical board B' and 'Simulated constellation (11-12 satellites)' boxes in green. Centre: a tall orange 'MQTT bus' bar. Right: the CASSANDRA pipeline as 5 stacked blue boxes numbered 1-5 (Observe, Forecast, Simulate, Act, Verify) inside a dashed border labelled 'never reads ground truth'. Below: grey 'Dashboard' and 'Recorder (scoring only)' boxes. Arrows labelled telemetry / commands. Reuse the TikZ figure of report/final_report.tex as the reference.",
+      "headline": "One message contract connects a simulated constellation, a physical board, the defence and the operator screen.",
+      "bullet_points": [
+        "Observe: telemetry, command origins and link state every second, with sequence and provenance checks",
+        "Forecast: probability of failure within 10, 30, 60 and 120 s per satellite, plus a cross-channel consistency check",
+        "Simulate: copy the constellation state, try each response for 60 s, score it",
+        "Act and verify: apply the best response through safety rules, then heal when the satellite is back to normal",
+        "Ground truth is only read by the scoring recorder; a test enforces that the defence never subscribes to it"
+      ],
+      "metric_callouts": [
+        {"value": "12", "label": "satellites on the bus"},
+        {"value": "5", "label": "stages per 1 s cycle"},
+        {"value": "~200", "label": "automated tests"}
+      ],
+      "speaker_notes": "The board on the table and the simulated satellites speak exactly the same messages, so the defence cannot tell them apart. Every second the core observes, forecasts, simulates the candidate responses, acts and verifies. The scoring side sees the ground truth; the defence never does, and a test checks it.",
+      "data_sources": ["docs/interfaces.md", "cassandra/ (module docstrings)", "docs/HANDOVER.md (test count)"]
+    },
+    {
+      "slide_number": 4,
+      "title": "Forecast, then decide",
+      "category": "Technical",
+      "layout_type": "2-Column Split (two formulas vs plain-language explanation)",
+      "visual_directives": "Two large formula cards on the left, rendered in clean math type: (1) P(F < t + D) = 1 - prod_{j<=k} (1 - sigma(b_j / T)); (2) J(a) = w_r R(a) + w_m (1 - U(a)) + w_c C(a) + w_q Q. Under each formula, one line in plain words. Right: a small graph sketch (subsystem nodes, edges only along engineering dependencies and available links) and a 3-step decision ladder icon (cut heater -> safe mode -> quarantine).",
+      "headline": "A calibrated failure forecast drives a cost function that weighs risk, service, action cost and uncertainty.",
+      "bullet_points": [
+        "Five small graph neural networks (about 42,700 parameters each); information only flows along engineering dependencies and links that physically exist",
+        "Calibrated so that a 'p' can be read as a probability; the spread of the five models is the uncertainty Q",
+        "Response cost J: expected number of satellites reaching failure, satellites kept in service, action cost, uncertainty",
+        "Safety rules: if Q > 0.35 hold and alert the ground; at most 25 % of the constellation isolated per orbit",
+        "None of these pieces is new on its own; the work is combining them and measuring the result"
+      ],
+      "metric_callouts": [
+        {"value": "≤ 0.005", "label": "calibration error (ECE), all horizons"},
+        {"value": "0.35", "label": "uncertainty gate on Q"},
+        {"value": "25 %", "label": "isolation budget per orbit"}
+      ],
+      "speaker_notes": "The forecaster gives a calibrated probability of failure per horizon, and the five models' disagreement tells us how unsure we are. The planner then compares responses with one cost: risk, service kept, cost of the action and uncertainty. If the models disagree too much, it does not isolate anything on its own: it holds and asks the ground.",
+      "data_sources": ["ml/model.py", "docs/ML_GUIDE.md", "cassandra/sandbox.py", "cassandra/config.yaml", "results/manifest.json (ece_10_bins)"]
+    },
+    {
+      "slide_number": 5,
+      "title": "What we measured",
+      "category": "Technical",
+      "layout_type": "Comparison Table (4 methods) + 3 metric cards",
+      "visual_directives": "Top: 3 metric cards (teal numbers). Bottom: a 4-row comparison table, our row highlighted in teal, baselines in grey: method | detection rate | median warning. Footnote in grey: 'Synthetic held-out scenarios, 0.1 % false-positive rate; simpler variants of our model score the same, so this benchmark cannot rank the model designs.' Optional: the operating-point scatter of report/final_report.tex (Fig. 2).",
+      "headline": "On synthetic held-out scenarios our forecaster warned of every failure about two minutes ahead at a 0.1 % false-positive rate; simple baselines warned later or missed more.",
+      "bullet_points": [
+        "Ours: 113 of 113 failures warned, median 135 s ahead (out-of-distribution split, 0.1 % false-positive rate)",
+        "Static threshold: 89 % warned, median 56 s; trajectory extrapolation: 87 %, 23 s; GDN: 73 % with 6.7 false alarms per satellite-hour before attacks",
+        "At the stricter threshold where the defence acts: 70-89 % of failures, about 36-40 s ahead",
+        "Closed loop on the simulator: 13 of 18 failures averted, 0 new failures, availability 0.9989 (optimistic upper bound)",
+        "Honest limit: our own simplified models reach the same detection rate on this benchmark"
+      ],
+      "metric_callouts": [
+        {"value": "113 / 113", "label": "failures warned (synthetic, held-out)"},
+        {"value": "135 s vs 56 s", "label": "median warning, ours vs static threshold"},
+        {"value": "13 / 18", "label": "failures averted in closed loop (upper bound)"}
+      ],
+      "speaker_notes": "On scenarios the model never saw during training, it warned of all 113 failures about two minutes ahead, while a static threshold warned about one minute ahead and missed some. We want to be fair: the synthetic benchmark is easy, and simplified versions of our model do as well. The closed-loop number is optimistic because the planner uses the same simulator.",
+      "data_sources": ["docs/NUMBERS.md", "results/manifest.json (headline, closed_loop)"]
+    },
+    {
+      "slide_number": 6,
+      "title": "On the table, and its limits",
+      "category": "Technical",
+      "layout_type": "2-Column Split (temperature chart vs constraints checklist)",
+      "visual_directives": "Left: the board temperature chart from report/results_and_evaluation.tex (Fig. 'A1 on the physical node'): measured curve in teal, dotted grey 'no response' line, red dashed 60 °C limit, red marker at the peak. Right: a checklist with green ticks for 'tested' and grey circles for 'not measured yet'. Grey footnote: 'Board temperature computed by its firmware; link cuts on the board are logical.'",
+      "headline": "On the physical board the attack was cut at 54 °C, 6 °C below the limit; several space constraints are handled in design but not yet measured.",
+      "bullet_points": [
+        "Real board: flagged 5.9 s after the attack command, heater cut at 21.9 s, peak 54.4 °C against 60 °C, healed at 30 s",
+        "Tested in simulation: masked telemetry caught 8 s after the attack (6/6 runs); propagation over links contained at the source (6/6); no satellite reached its limit in 21 live runs",
+        "Handled by design: links used only when geometrically possible; single-sample upsets ignored by a robust trend; safe mode sheds the heater",
+        "Not measured yet: total communication loss, energy, latency on the Raspberry Pi, radiation-tolerant hardware"
+      ],
+      "metric_callouts": [
+        {"value": "54.4 °C", "label": "peak on the board, limit 60 °C"},
+        {"value": "8 s", "label": "to catch masked telemetry (6/6 runs)"},
+        {"value": "28-36 ms", "label": "per decision cycle on a laptop (budget 150 ms)"}
+      ],
+      "speaker_notes": "This is the board you see on the table: the attack latches its heater, the defence cuts it at 54 degrees, six degrees before the limit, and the board recovers. In simulation we also tested masked telemetry and propagation between satellites. We list clearly what we have not measured yet, such as communication loss and energy.",
+      "data_sources": ["results/board_a1.json", "results/board_a1_curve.csv", "results/phase6_block3.json", "results/live_manifest.json", "docs/NUMBERS.md"]
+    },
+    {
+      "slide_number": 7,
+      "title": "Why an operator would care",
+      "category": "Business/BMC",
+      "layout_type": "3-Column Value Cards",
+      "visual_directives": "Light background. Three cards with icons: clock (time to act), shield with a heartbeat (keep the mission running), magnifier on a chain (explainable). Each card: one bold line and two short supporting lines. A thin grey band at the bottom: 'Positioning: complements existing limit checking, does not replace it.'",
+      "headline": "Time to choose a gentle response, instead of a late emergency one, using telemetry the operator already receives.",
+      "bullet_points": [
+        "Time: warns before a limit is reached, so a mild action (switch a heater off) can replace an emergency one (lose the satellite or put it in safe mode)",
+        "Continuity: chooses the least disruptive response and limits automatic isolation, to avoid the defence becoming the outage",
+        "Explainability: every decision comes with its cause, the alternatives considered and their cost, and an attack chain built from observed evidence only",
+        "Low integration cost: runs on the ground with the existing housekeeping telemetry; no new sensor or on-board software in its first form"
+      ],
+      "metric_callouts": [
+        {"value": "0", "label": "new on-board hardware needed in the ground-segment version"},
+        {"value": "0 / 21", "label": "false containments in live runs"}
+      ],
+      "speaker_notes": "For an operator, the value is time: minutes instead of seconds to pick a gentle response. It is designed to sit next to existing limit checking, not to replace it, and to explain every decision. Its first form runs on the ground with the telemetry they already have.",
+      "data_sources": ["cassandra/explain.py", "cassandra/incident.py", "results/live_manifest.json", "results/phase6_block3.json"]
+    },
+    {
+      "slide_number": 8,
+      "title": "Business Model Canvas (working hypotheses)",
+      "category": "Business/BMC",
+      "layout_type": "9-Box BMC Grid",
+      "visual_directives": "Classic 9-box canvas on a light background: Key Partners | Key Activities / Key Resources | Value Proposition | Customer Relationships / Channels | Customer Segments, with Cost Structure and Revenue Streams across the bottom. Short phrases only, 2-4 per box. Grey stamp in the corner: 'Hypotheses to validate with operators'. Highlight the Value Proposition box in teal.",
+      "headline": "A ground-segment software service, validated first with academic and small-satellite operators.",
+      "bullet_points": [
+        "Key partners: university and CubeSat ground stations; ground-segment software and mission-control providers; space security frameworks and communities (SPARTA); IEEE / TUNSA network",
+        "Key activities: validating on real telemetry, adapting the models per mission, integration with mission control, keeping the threat library current",
+        "Key resources: the simulator and data generator, the calibrated forecaster, the message contract and bus integration, the team's skills",
+        "Value proposition: earlier, calibrated warnings and the least disruptive response, with an explanation for each decision",
+        "Customer relationships and channels: pilot projects in 'shadow mode' (advice only, no automatic action), then support contracts; through integrators, academic networks and conferences",
+        "Customer segments: small-satellite operators first, then constellation operators and agencies",
+        "Cost structure: engineering time, training compute, per-mission adaptation, security reviews",
+        "Revenue streams (to test): pilot and integration fees, then a per-satellite subscription; no prices yet"
+      ],
+      "metric_callouts": [
+        {"value": "Shadow mode first", "label": "advice only before any automatic action"}
+      ],
+      "speaker_notes": "We see this as ground-segment software, not hardware. Every box is a hypothesis we would test, starting with university and small-satellite ground stations in shadow mode, where the system only advises. We have not set prices; the first revenue would come from pilots and integration work.",
+      "data_sources": ["No repository data: business hypotheses"]
+    },
+    {
+      "slide_number": 9,
+      "title": "Who we would talk to first",
+      "category": "Business/BMC",
+      "layout_type": "3-tier target diagram (beachhead -> next -> later) with short persona cards",
+      "visual_directives": "Light background. Three concentric rings or three left-to-right steps: 'Start' (teal), 'Next' (lighter teal), 'Later' (grey). One persona card per step with an icon (university dish, constellation, government building). No market-size numbers anywhere on the slide.",
+      "headline": "Start where telemetry is accessible and the risk of a pilot is low, then move to operators with more satellites at stake.",
+      "bullet_points": [
+        "Start: university and CubeSat ground stations, including regional teams: accessible telemetry, small fleets, open to pilots",
+        "Next: small-satellite and constellation operators, where one compromised node can reach others over inter-satellite links",
+        "Later: agencies and defence ground segments, which need certification and security reviews we do not have yet",
+        "Partners rather than customers: mission-control software vendors and integrators who could embed the forecaster"
+      ],
+      "metric_callouts": [
+        {"value": "1st step", "label": "a pilot on recorded telemetry from a university ground station"}
+      ],
+      "speaker_notes": "Our first users would be university and small-satellite ground stations: their telemetry is accessible and a pilot is low-risk. Constellation operators come next, because propagation between satellites is the case our prototype handles that simple alarms do not. Government and defence users come last, since they require certification we do not have.",
+      "data_sources": ["No repository data: market hypotheses"]
+    },
+    {
+      "slide_number": 10,
+      "title": "What it costs to run",
+      "category": "Business/BMC",
+      "layout_type": "Comparison Table (ground-segment version vs a possible on-board version) + 3 metric cards",
+      "visual_directives": "Light background. Top: 3 metric cards with measured resource needs. Bottom: a 2-column comparison table 'Ground segment (now)' vs 'On board (future, not built)': rows = hardware, downlink, compute, update path, main risk. Grey footnote: 'Measured on an x86 laptop; Raspberry Pi and on-board figures not measured; no prices on this slide.'",
+      "headline": "The measured footprint is small enough for ordinary ground-station hardware; the main costs are people and validation, not compute.",
+      "bullet_points": [
+        "Compute: 17.6 ms median per cycle for the 5 models on one laptop CPU thread; a full decision cycle 28-36 ms, planning 61-89 ms, budget 150 ms",
+        "Model size: about 1.1 MB for the five models; retraining all models took 21 minutes on the laptop",
+        "Data: uses the housekeeping telemetry, commands and link status operators already downlink; it adds no telemetry",
+        "Ground vs on board: on the ground it needs no satellite change; an on-board version would need measurements on space-grade processors we have not made",
+        "Main costs: engineering, per-mission adaptation and validation on real telemetry, not hardware"
+      ],
+      "metric_callouts": [
+        {"value": "17.6 ms", "label": "inference per cycle, 5 models, 1 CPU thread"},
+        {"value": "~1.1 MB", "label": "total model size"},
+        {"value": "21 min", "label": "to retrain all models on a laptop"}
+      ],
+      "speaker_notes": "We measured what it takes to run: about 18 milliseconds per cycle for the five models on a laptop, about one megabyte of models, and no extra telemetry. That means the ground version can run on ordinary hardware; the real costs are engineering and validation with each operator. We have not measured an on-board version and we do not quote prices yet.",
+      "data_sources": ["results/manifest.json (latency, wall_time_per_step)", "results/live_manifest.json", "data/models (models-v2 release, 1,144,525 bytes for 5 models)", "docs/STATUS.md"]
+    },
+    {
+      "slide_number": 11,
+      "title": "Next steps, realistically",
+      "category": "Business/BMC",
+      "layout_type": "Horizontal roadmap with 4 phases and gates",
+      "visual_directives": "Light background, a horizontal line with 4 phase blocks: 'Done' (green), 'Next 3 months' (teal), 'Pilot' (light teal), 'Later, if validated' (grey, dashed border). A small diamond gate between phases with its condition. Closing line in bold at the bottom, then 'Thank you' and the team names.",
+      "headline": "From a working prototype to a validated tool, one gate at a time; on-orbit use only if the pilots justify it.",
+      "bullet_points": [
+        "Done (Phase 3): end-to-end prototype, 12-satellite simulator, one physical board, defence core, dashboard, evaluation pipeline",
+        "Next 3 months: a harder synthetic benchmark; false-alarm rates on real ESA telemetry; latency on the Raspberry Pi; nodes with real temperature sensors",
+        "Pilot: run in shadow mode on recorded telemetry from a university ground station; gate = acceptable false-alarm rate on real data",
+        "Later, only if validated: live advisory use with an operator; an on-board version would be a separate project",
+        "Ask: access to real telemetry and feedback from operators"
+      ],
+      "metric_callouts": [
+        {"value": "Shadow mode", "label": "first deployment: advice only"},
+        {"value": "Real telemetry", "label": "what we need most"}
+      ],
+      "speaker_notes": "We have a working prototype, and we know what it has not proven yet. The next steps are modest: a harder benchmark, false-alarm rates on real ESA telemetry and a pilot in advice-only mode with a ground station. What would help us most is access to real telemetry. Thank you.",
+      "data_sources": ["docs/HANDOVER.md", "docs/STATUS.md (known limitations)", "report/results_and_evaluation.tex (open evidence gaps)"]
+    }
+  ]
+}
